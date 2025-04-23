@@ -2998,7 +2998,7 @@
           "bin/placeholder/Common.dll": {}
         }
       },
-      "Dawnsbury Days/3.39.0": {
+      "Dawnsbury Days/3.40.0": {
         "type": "project",
         "framework": ".NETCoreApp,Version=v9.0",
         "dependencies": {
@@ -8740,7 +8740,7 @@
       "path": "../../dawnsbury-days/Common/Common.csproj",
       "msbuildProject": "../../dawnsbury-days/Common/Common.csproj"
     },
-    "Dawnsbury Days/3.39.0": {
+    "Dawnsbury Days/3.40.0": {
       "type": "project",
       "path": "../../dawnsbury-days/Maingame/Dawnsbury Days.csproj",
       "msbuildProject": "../../dawnsbury-days/Maingame/Dawnsbury Days.csproj"
@@ -8749,7 +8749,7 @@
   "projectFileDependencyGroups": {
     "net9.0-windows7.0": [
       "Common >= 1.0.0",
-      "Dawnsbury Days >= 3.39.0"
+      "Dawnsbury Days >= 3.40.0"
     ]
   },
   "packageFolders": {
@@ -8822,7 +8822,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Users\\petrh\\.dotnet\\sdk\\9.0.200/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.203/PortableRuntimeIdentifierGraph.json"
       }
     }
   }
