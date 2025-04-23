@@ -8753,8 +8753,7 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\Len\\.nuget\\packages\\": {},
-    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+    "C:\\Users\\petrh\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
@@ -8762,22 +8761,16 @@
       "projectUniqueName": "C:\\src\\dawnsbury-days-community-mods\\Swashbuckler\\Dawnbury.Mods.Phoenix.Petr.csproj",
       "projectName": "Dawnbury.Mods.Phoenix.Petr",
       "projectPath": "C:\\src\\dawnsbury-days-community-mods\\Swashbuckler\\Dawnbury.Mods.Phoenix.Petr.csproj",
-      "packagesPath": "C:\\Users\\Len\\.nuget\\packages\\",
+      "packagesPath": "C:\\Users\\petrh\\.nuget\\packages\\",
       "outputPath": "C:\\src\\dawnsbury-days-community-mods\\Swashbuckler\\obj\\",
       "projectStyle": "PackageReference",
-      "fallbackFolders": [
-        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
-      ],
       "configFilePaths": [
-        "C:\\Users\\Len\\AppData\\Roaming\\NuGet\\NuGet.Config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        "C:\\Users\\petrh\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net9.0-windows"
       ],
       "sources": {
-        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
@@ -8808,7 +8801,7 @@
         "auditLevel": "low",
         "auditMode": "direct"
       },
-      "SdkAnalysisLevel": "9.0.100"
+      "SdkAnalysisLevel": "9.0.200"
     },
     "frameworks": {
       "net9.0-windows7.0": {
@@ -8829,7 +8822,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.102/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Users\\petrh\\.dotnet\\sdk\\9.0.200/PortableRuntimeIdentifierGraph.json"
       }
     }
   }
