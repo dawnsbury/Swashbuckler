@@ -19,6 +19,7 @@ public class AddWeapons
 {
     public static QEffectId ParryEffect = ModManager.TryParse<QEffectId>("Parry", out QEffectId parryId) ? parryId : ModManager.RegisterEnumMember<QEffectId>("Parry");
     public static Trait Parry = ModManager.TryParse<Trait>("Parry", out Trait parryTrait) ? parryTrait : ModManager.RegisterTrait("Parry", new TraitProperties("Parry", true, "If you are at least trained in this weapon, it can be used defensively to block attacks."));
+    public static Trait SpiralRapierTrait = ModManager.RegisterTrait("Spiral Rapier");
 
     public static QEffect Parrying(Item weapon)
     {
@@ -69,6 +70,7 @@ public class AddWeapons
     public static ItemName SpiralRapier = ModManager.RegisterNewItemIntoTheShop("SpiralRapier", (itemName) =>
     {
         return new Item(itemName, new ModdedIllustration("PhoenixAssets/SpiralRapier.png"), "spiral rapier", 0, 5, new Trait[] { Parry, Trait.Disarm, Trait.Finesse, Trait.Advanced, Trait.Sword })
+            .WithMainTrait(SpiralRapierTrait)
             .WithWeaponProperties(new WeaponProperties("1d6", DamageKind.Piercing));
     });
     

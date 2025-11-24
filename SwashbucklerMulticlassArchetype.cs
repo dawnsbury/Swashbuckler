@@ -10,7 +10,7 @@ using Dawnsbury.Core.Mechanics.Core;
 using Dawnsbury.Core.Mechanics.Enumerations;
 using Dawnsbury.Core.Mechanics.Rules;
 using Dawnsbury.Core.Mechanics.Treasure;
-using Dawnsbury.Core.Roller;
+using Dawnsbury.Core.Mechanics.Targeting;
 using Dawnsbury.Display.Illustrations;
 using Dawnsbury.Modding;
 using System;
@@ -23,7 +23,7 @@ public class AddMulticlassSwash
 {
     public static IEnumerable<Feat> GetSwashArchetypeSubclasses()
     {
-        foreach (var style in AllFeats.All.First((Feat ft) => ft.FeatName == AddSwash.Swashbuckler.FeatName).Subfeats)
+        foreach (var style in AllFeats.GetFeatByFeatName(AddSwash.Swashbuckler.FeatName).Subfeats)
         {
             var style2 = style as AddSwash.SwashbucklerStyle;
             yield return new Feat(ModManager.RegisterFeatName(style.FeatName.ToStringOrTechnical() + "ForArchetype", style.Name), style.FlavorText, "You can choose to become trained in " + style2.Skill.ToString() + ". You gain " + style.RulesText.Substring(style.RulesText.IndexOf("panache")), new List<Trait>(), null)
@@ -33,6 +33,22 @@ public class AddMulticlassSwash
                     sheet.AddFeatForPurposesOfPrerequisitesOnly(style.FeatName);
                 });
         }
+    }
+
+    public static CombatAction CreateBasicFinisher(Creature swash, Item item, bool thrown, StrikeModifiers modifiers)
+    {
+        CombatAction basicFinisher = StrikeRules.CreateStrike(swash, item, thrown ? RangeKind.Ranged : RangeKind.Melee, -1, thrown, modifiers)
+            .WithActionCost(1)
+            .WithExtraTrait(AddSwash.Finisher)
+            .WithExtraTrait(Trait.Basic)
+            .WithDescription(StrikeRules.CreateBasicStrikeDescription2(modifiers, null, null, null, null, "You lose panache, whether the attack succeeds or fails."))
+            .WithEffectOnSelf(async (spell, self) =>
+            {
+                AddSwash.FinisherExhaustion(self);
+            });
+        basicFinisher.Name = "Basic Finisher";
+        basicFinisher.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.StarHit);
+        return basicFinisher;
     }
 
     public static Feat MulticlassSwashDedication = ArchetypeFeats.CreateMulticlassDedication(AddSwash.SwashTrait, "You've learned to move and fight with style and swagger.", "Choose a swashbuckler style. You gain the panache class feature, and can gain panache in all the ways a swashbuckler of your style can. You become trained in Acrobatics or the skill associated with your style. You also become trained in swashbuckler class DC. You don't gain any other effects of your chosen style.", GetSwashArchetypeSubclasses().ToList()).WithDemandsAbility14(Ability.Dexterity).WithDemandsAbility14(Ability.Charisma)
@@ -66,17 +82,7 @@ public class AddMulticlassSwash
                 bool flag2 = qf.Owner.HasEffect(AddSwash.PanacheId);
                 if (flag && flag2)
                 {
-                    CombatAction basicFinisher = qf.Owner.CreateStrike(item);
-                    basicFinisher.Name = "Basic Finisher";
-                    basicFinisher.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.StarHit);
-                    basicFinisher.Description = StrikeRules.CreateBasicStrikeDescription2(basicFinisher.StrikeModifiers, null, null, null, null, "You lose panache, whether the attack succeeds or fails.");
-                    basicFinisher.ActionCost = 1;
-                    basicFinisher.StrikeModifiers.OnEachTarget = async delegate (Creature owner, Creature victim, CheckResult result)
-                    {
-                        AddSwash.FinisherExhaustion(owner);
-                    };
-                    basicFinisher.Traits.Add(AddSwash.Finisher);
-                    return basicFinisher;
+                    return CreateBasicFinisher(qf.Owner, item, false, basic);
                 }
                 else return null;
             };

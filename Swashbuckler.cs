@@ -23,6 +23,7 @@ using Dawnsbury.Display;
 using Dawnsbury.Display.Illustrations;
 using Dawnsbury.Display.Text;
 using Dawnsbury.Modding;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -41,11 +42,6 @@ public class AddSwash
     public static ActionId BonMotId = ModManager.RegisterEnumMember <ActionId>("BonMot");
     public static ActionId LeadingDanceId = ModManager.RegisterEnumMember<ActionId>("LeadingDance");
     public static ActionId FascinatingPerformanceActionId = ModManager.RegisterEnumMember<ActionId>("FascinatingPerformanceAction");
-    //public static ActionId BasicFinisherId = ModManager.RegisterEnumMember<ActionId>("BasicFinisher");
-    //public static ActionId BleedingFinisherId = ModManager.RegisterEnumMember<ActionId>("BleedingFinisher");
-    //public static ActionId ConfidentFinisherId = ModManager.RegisterEnumMember<ActionId>("ConfidentFinisher");
-    //public static ActionId StunningFinisherId = ModManager.RegisterEnumMember<ActionId>("StunningFinisher");
-    public static ActionId UnbalancingFinisherId = ModManager.RegisterEnumMember<ActionId>("UnbalancingFinisher");
     public static FeatName BattledancerStyle = ModManager.RegisterFeatName("Battledancer");
     public static FeatName BraggartStyle = ModManager.RegisterFeatName("Braggart");
     public static FeatName FencerStyle = ModManager.RegisterFeatName("Fencer");
@@ -53,14 +49,10 @@ public class AddSwash
     public static FeatName WitStyle = ModManager.RegisterFeatName("Wit");
     public static QEffect CreatePanache(Skill styleSkill)
     {
-        QEffect panache = new QEffect()
+        QEffect panache = new QEffect("Panache", "You have a +5-foot status bonus to your Speed and a +1 circumstance bonus to Acrobatics and " + styleSkill.HumanizeTitleCase2() + " skill checks.\n\nYou can use finishers by spending panache.", ExpirationCondition.Never, null, new ModdedIllustration("PhoenixAssets/panache.PNG"))
         {
             Id = PanacheId,
             Key = "Panache",
-            Name = "Panache",
-            Illustration = new ModdedIllustration("PhoenixAssets/panache.PNG"),
-            Description = "You have a +5-foot status bonus to your Speed and a +1 circumstance bonus to Acrobatics and " + styleSkill.HumanizeTitleCase2() + " skill checks.\n\nYou can use finishers by spending panache.",
-            ExpiresAt = ExpirationCondition.Never,
             BonusToAllSpeeds = delegate (QEffect qfpanache)
             {
                 return new Bonus(1, BonusType.Status, "Panache");
@@ -154,12 +146,8 @@ public class AddSwash
 
     public static void FinisherExhaustion(Creature swash)
     {
-        swash.AddQEffect(new QEffect()
+        swash.AddQEffect(new QEffect("Used Finisher", "After using a finisher, you can't take any Attack actions for the rest of your turn.", ExpirationCondition.ExpiresAtEndOfYourTurn, swash, IllustrationName.Fatigued)
         {
-            Name = "Used Finisher",
-            Illustration = IllustrationName.Fatigued,
-            Description = "After using a finisher, you can't take any Attack actions for the rest of your turn.",
-            ExpiresAt = ExpirationCondition.ExpiresAtEndOfYourTurn,
             PreventTakingAction = (CombatAction action) => !(action.HasTrait(Trait.Attack)) ? null : "You used a finisher this turn."
         });
     }
@@ -175,7 +163,7 @@ public class AddSwash
                  bool flag = action.HasTrait(Trait.Agile) || action.HasTrait(Trait.Finesse);
                  bool flag2 = action.Owner.HasEffect(PanacheId);
                  bool flag3 = action.HasTrait(Finisher);
-                 bool flag4 = !action.HasTrait(Trait.Ranged) || (action.HasTrait(Trait.Thrown) && (action.Owner.PersistentCharacterSheet?.Calculated.AllFeats.Any(feat => feat.Name == "Flying Blade") ?? false) && (defender.DistanceTo(qf.Owner) <= action.Item!.WeaponProperties!.RangeIncrement));
+                 bool flag4 = !action.HasTrait(Trait.Ranged) || (action.HasTrait(Trait.Thrown) && (action.Owner.HasFeat(FlyingBlade.FeatName) && (defender.DistanceTo(qf.Owner) <= action.Item!.WeaponProperties!.RangeIncrement)));
                  bool flag5 = defender.IsImmuneTo(Trait.PrecisionDamage);
                  if (flag && flag3 && flag4 && (!flag5))
                  {
@@ -195,6 +183,109 @@ public class AddSwash
         QEffect preciseStrikeEffect = creature.FindQEffect(PreciseStrikeEffectId);
         if (preciseStrikeEffect == null) return 0;
         return preciseStrikeEffect.Value;
+    }
+
+    public static CombatAction CreateConfidentFinisher(Creature swash, Item item, bool thrown, StrikeModifiers modifiers)
+    {
+        CombatAction conffinish = StrikeRules.CreateStrike(swash, item, thrown ? RangeKind.Ranged : RangeKind.Melee, -1, thrown, modifiers)
+            .WithActionCost(1)
+            .WithExtraTrait(Finisher)
+            .WithExtraTrait(Trait.Basic);
+
+        conffinish.Name = "Confident Finisher";
+        conffinish.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.StarHit);
+        conffinish.Description = StrikeRules.CreateBasicStrikeDescription2(conffinish.StrikeModifiers, null, null, null, "The target takes " + GetPreciseStrikeDamage(swash) + "d6/2 damage.", "You lose panache, whether the attack succeeds or fails.");
+        conffinish.StrikeModifiers.OnEachTarget = async delegate (Creature owner, Creature victim, CheckResult result)
+        {
+            int preciseDamage = GetPreciseStrikeDamage(owner);
+            if (result == CheckResult.Failure)
+            {
+                HalfDiceFormula halfdamage = new HalfDiceFormula(DiceFormula.FromText(preciseDamage.ToString() + "d6", "Precise Strike"), "Miss with Confident Finisher");
+                DiceFormula fulldamage = DiceFormula.FromText(preciseDamage.ToString() + "d6", "Miss with Precise Finisher");
+                await CommonSpellEffects.DealDirectDamage(conffinish, swash.HasEffect(PreciseFinisherQEffectId) ? fulldamage : halfdamage, victim, result, conffinish.StrikeModifiers.CalculatedItem.WeaponProperties.DamageKind);
+            }
+            FinisherExhaustion(owner);
+        };
+        return conffinish;
+    }
+
+    public static CombatAction CreateUnbalancingFinisher(Creature swash, Item item, bool thrown, StrikeModifiers modifiers)
+    {
+        CombatAction unbal = StrikeRules.CreateStrike(swash, item, thrown ? RangeKind.Ranged : RangeKind.Melee, -1, thrown, modifiers)
+            .WithDescription(StrikeRules.CreateBasicStrikeDescription2(modifiers, null, "The target is flat-footed until the end of your next turn.", null, null, "You lose panache, whether the attack succeeds or fails."))
+            .WithActionCost(1)
+            .WithExtraTrait(Finisher)
+            .WithExtraTrait(Trait.Basic)
+            .WithEffectOnEachTarget(async (spell, caster, target, result) =>
+            {
+                FinisherExhaustion(caster);
+                if (result >= CheckResult.Success)
+                {
+                    target.AddQEffect(QEffect.FlatFooted("unbalancing finisher")
+                        .WithExpirationAtEndOfSourcesNextTurn(caster, true));
+                }
+            });
+        unbal.Name = "Unbalancing Finisher";
+        unbal.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.Trip);
+        return unbal;
+    }
+
+    public static CombatAction CreateBleedingFinisher(Creature swash, Item item, bool thrown, StrikeModifiers modifiers)
+    {
+        CombatAction combatAction = StrikeRules.CreateStrike(swash, item, thrown ? RangeKind.Ranged : RangeKind.Melee, -1, thrown, modifiers)
+            .WithActionCost(1)
+            .WithExtraTrait(Finisher)
+            .WithExtraTrait(Trait.Basic)
+            .WithDescription(StrikeRules.CreateBasicStrikeDescription2(modifiers, null, "The target takes " + GetPreciseStrikeDamage(swash).ToString() + "d6 persistent bleed damage.", null, null, "You lose panache, whether the attack succeeds or fails."));
+        combatAction.Name = "Bleeding Finisher";
+        combatAction.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.BloodVendetta);
+        combatAction.StrikeModifiers.OnEachTarget = async delegate (Creature owner, Creature victim, CheckResult result)
+        {
+            if (result >= CheckResult.Success)
+            {
+                victim.AddQEffect(QEffect.PersistentDamage(GetPreciseStrikeDamage(owner).ToString() + "d6", DamageKind.Bleed));
+            }
+            FinisherExhaustion(swash);
+        };
+        return combatAction;
+    }
+
+    public static CombatAction CreateStunningFinisher(Creature swash, Item item, bool thrown, StrikeModifiers modifiers)
+    {
+        CombatAction stun = StrikeRules.CreateStrike(swash, item, thrown ? RangeKind.Ranged : RangeKind.Melee, -1, thrown, modifiers)
+            .WithDescription(StrikeRules.CreateBasicStrikeDescription2(modifiers, null, "The target makes a DC " + swash.ClassOrSpellDC() + " Fortitude save (this is an incapacitation effect). On a success, it can't take reactions for 1 turn. On a failure, it is stunned 1, and on a critical failure, it is stunned 3.", null, null, "You lose panache, whether the attack succeeds or fails."))
+            .WithActionCost(1)
+            .WithExtraTrait(Finisher)
+            .WithExtraTrait(Trait.Basic);
+        stun.Name = "Stunning Finisher";
+        stun.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.Stunned);
+        stun.StrikeModifiers.OnEachTarget = async delegate (Creature owner, Creature victim, CheckResult result)
+        {
+            FinisherExhaustion(owner);
+            if (result >= CheckResult.Success)
+            { 
+                CombatAction theactualstun = CombatAction.CreateSimple(owner, "Stunning Finisher", new Trait[] { Trait.Incapacitation });
+                switch (CommonSpellEffects.RollSavingThrow(victim, theactualstun, Defense.Fortitude, owner.ClassOrSpellDC()))
+                {
+                    case CheckResult.Success:
+                        victim.AddQEffect(new QEffect(ExpirationCondition.ExpiresAtStartOfYourTurn)
+                        {
+                            Name = "Cannot take reactions",
+                            Illustration = IllustrationName.ReactionUsedUp,
+                            Description = "You cannot take reactions until the start of your turn.",
+                            Id = QEffectId.CannotTakeReactions
+                        });
+                        break;
+                    case CheckResult.Failure:
+                        victim.AddQEffect(QEffect.Stunned(1));
+                        break;
+                    case CheckResult.CriticalFailure:
+                        victim.AddQEffect(QEffect.Stunned(3));
+                        break;
+                }
+            }
+        };
+        return stun;
     }
 
     public static Feat Swashbuckler = new ClassSelectionFeat(ModManager.RegisterFeatName("Swashbuckler"), "Many warriors rely on brute force, weighty armor, or cumbersome weapons. For you, battle is a dance where you move among foes with style and grace. You dart among combatants with flair and land powerful finishing moves with a flick of the wrist and a flash of the blade, all while countering attacks with elegant ripostes that keep enemies off balance. Harassing and thwarting your foes lets you charm fate and cheat death time and again with aplomb and plenty of flair.",
@@ -266,11 +357,11 @@ public class AddSwash
                     {
                         swash.AddQEffect(new QEffect("Exemplary Finisher", "When you hit with a finisher, you end a foe's temporary immunity to your Demoralize.")
                         {
-                            AfterYouTakeAction = async (qf, action) =>
+                            AfterYouTakeActionAgainstTarget = async (qf, action, target, result) =>
                             {
                                 if (action.HasTrait(Finisher) && (action.CheckResult >= CheckResult.Success))
                                 {
-                                    QEffect targetEffect = action.ChosenTargets.ChosenCreature.QEffects.FirstOrDefault((QEffect q) => (q.Id == QEffectId.ImmunityToTargeting) && (q.Source == qf.Owner) && ((ActionId)q.Tag == ActionId.Demoralize));
+                                    QEffect targetEffect = target.QEffects.FirstOrDefault((QEffect q) => (q.Id == QEffectId.ImmunityToTargeting) && (q.Source == qf.Owner) && ((ActionId)q.Tag == ActionId.Demoralize));
                                     if (targetEffect != default)
                                     {
                                         targetEffect.ExpiresAt = ExpirationCondition.Immediately;
@@ -295,11 +386,11 @@ public class AddSwash
                     {
                         swash.AddQEffect(new QEffect("Exemplary Finisher", "When you hit with a finisher, the target is flat-footed until your next turn.")
                         {
-                            AfterYouTakeAction = async (qf, action) =>
+                            AfterYouTakeActionAgainstTarget = async (qf, action, target, result) =>
                             {
-                                if (action.HasTrait(Finisher) && (action.CheckResult >= CheckResult.Success))
+                                if (action.HasTrait(Finisher) && (result >= CheckResult.Success))
                                 {
-                                    action.ChosenTargets.ChosenCreature.AddQEffect(QEffect.FlatFooted("Exemplary Finisher").WithExpirationAtStartOfSourcesTurn(qf.Owner, 1));
+                                    target.AddQEffect(QEffect.FlatFooted("exemplary finisher").WithExpirationAtStartOfSourcesTurn(qf.Owner, 1));
                                 }
                             }
                         });
@@ -327,7 +418,7 @@ public class AddSwash
                                     if (defender.HasEffect(QEffectId.Grabbed) || defender.HasEffect(QEffectId.Restrained) || defender.HasEffect(QEffectId.Prone))
                                     {
                                         int bonus = action.Item.WeaponProperties.DamageDieCount;
-                                        return new Bonus(bonus, BonusType.Circumstance, "Exemplary Finisher");
+                                        return new Bonus(bonus, BonusType.Circumstance, "exemplary finisher");
                                     }
                                 }
                                 return null;
@@ -351,13 +442,13 @@ public class AddSwash
                     {
                         swash.AddQEffect(new QEffect("Exemplary Finisher", "When you hit with a finisher, the target takes a -2 circumstance penalty to attack rolls against you until the start of your next turn.")
                         {
-                            AfterYouTakeAction = async (qf, action) =>
+                            AfterYouTakeActionAgainstTarget = async (qf, action, target, result) =>
                             {
-                                if (action.HasTrait(Finisher) && (action.CheckResult >= CheckResult.Success))
+                                if (action.HasTrait(Finisher) && (result >= CheckResult.Success))
                                 {
-                                    action.ChosenTargets.ChosenCreature.AddQEffect(new QEffect()
+                                    target.AddQEffect(new QEffect()
                                     {
-                                        BonusToAttackRolls = delegate (QEffect fct, CombatAction help, Creature? target)
+                                        BonusToAttackRolls = delegate (QEffect fct, CombatAction help, Creature? target2)
                                         {
                                             if (help.HasTrait(Trait.Attack) && (target == qf.Owner))
                                             {
@@ -383,7 +474,8 @@ public class AddSwash
             features.AddFeature(7, WellKnownClassFeature.WeaponSpecialization);
             features.AddFeature(9, "exemplary finisher", "you gain a special effect when you perform finishers based on your swashbuckler style");
             features.AddFeature(9, "precise strike 4d6");
-            features.AddFeature(9, "swashbuckler expertise", "your proficiency for your swashbuckler class DC increases to expert");
+            features.AddFeature(9, WellKnownClassFeature.ExpertInClassDC);
+            //features.AddFeature(11, WellKnownClassFeature.MasterInPerception);
             features.AddFeature(11, "vivacious speed +20 feet");
             features.AddFeature(13, "precise strike 5d6");
             features.AddFeature(15, "vivacious speed +25 feet");
@@ -412,7 +504,7 @@ public class AddSwash
             if (creature.Level >= 7)
             {
                 CommonCharacterFeatures.AddEvasion(creature, "Evasion", Defense.Reflex, 13);
-                creature.AddQEffect(QEffect.WeaponSpecialization());
+                creature.AddQEffect(QEffect.WeaponSpecialization(creature.Level >= 15));
             }
             if (creature.Level >= 17)
             {
@@ -432,7 +524,21 @@ public class AddSwash
             sheet.IncreaseProficiency(5, Trait.Martial, Proficiency.Expert);
             sheet.IncreaseProficiency(7, Trait.Reflex, Proficiency.Master);
             sheet.IncreaseProficiency(9, SwashTrait, Proficiency.Expert);
+            /*
+            sheet.IncreaseProficiency(11, Trait.Perception, Proficiency.Master);
+            sheet.IncreaseProficiency(13, Trait.Reflex, Proficiency.Legendary);
+            sheet.IncreaseProficiency(13, Trait.UnarmoredDefense, Proficiency.Expert);
+            sheet.IncreaseProficiency(13, Trait.LightArmor, Proficiency.Expert);
+            sheet.IncreaseProficiency(13, Trait.Unarmed, Proficiency.Master);
+            sheet.IncreaseProficiency(13, Trait.Simple, Proficiency.Master);
+            sheet.IncreaseProficiency(13, Trait.Martial, Proficiency.Master);
+            */
             sheet.IncreaseProficiency(17, Trait.Will, Proficiency.Master);
+            /*
+            sheet.IncreaseProficiency(19, SwashTrait, Proficiency.Master);
+            sheet.IncreaseProficiency(19, Trait.UnarmoredDefense, Proficiency.Master);
+            sheet.IncreaseProficiency(19, Trait.LightArmor, Proficiency.Master);
+            */
         });
 
     public static readonly Feat OpportuneRiposte = new Feat(ModManager.RegisterFeatName("Opportune Riposte", "Opportune Riposte {icon:Reaction}"), "You take advantage of an opening from your foe's fumbled attack.", "When an enemy critically fails its Strike against you, you can use your reaction to make a melee Strike against that enemy or make a Disarm attempt.", new List<Trait>(), null)
@@ -451,15 +557,21 @@ public class AddSwash
 
                 CombatAction CreateOpportuneRiposteFromWeapon(Item weapon)
                 {
-                    CombatAction combatAction2 = qf.Owner.CreateStrike(weapon, -1).WithActionCost(0);
-                    combatAction2.Traits.AddRange(new Trait[] { OpportuneRiposteTrait, Trait.ReactiveAttack });
+                    CombatAction combatAction2 = qf.Owner.CreateStrike(weapon, -1)
+                        .WithActionCost(0)
+                        .WithExtraTrait(OpportuneRiposteTrait)
+                        .WithExtraTrait(Trait.ReactiveAttack);
+                    //combatAction2.Traits.AddRange(new Trait[] { OpportuneRiposteTrait, Trait.ReactiveAttack });
                     return combatAction2;
                 }
 
                 CombatAction CreateOpportuneDisarmFromWeapon(Item weapon)
                 {
-                    CombatAction combatAction2 = CombatManeuverPossibilities.CreateDisarmAction(qf.Owner, weapon).WithActionCost(0);
-                    combatAction2.Traits.AddRange(new Trait[] { OpportuneRiposteTrait, Trait.ReactiveAttack });
+                    CombatAction combatAction2 = CombatManeuverPossibilities.CreateDisarmAction(qf.Owner, weapon)
+                        .WithActionCost(0)
+                        .WithExtraTrait(OpportuneRiposteTrait)
+                        .WithExtraTrait(Trait.ReactiveAttack);
+                    //combatAction2.Traits.AddRange(new Trait[] { OpportuneRiposteTrait, Trait.ReactiveAttack });
                     return combatAction2;
                 }
 
@@ -502,25 +614,7 @@ public class AddSwash
                 bool flag2 = qf.Owner.HasEffect(PanacheId);
                 if (flag && flag2)
                 {
-                    CombatAction conffinish = qf.Owner.CreateStrike(item, -1, conf);
-
-                    conffinish.Name = "Confident Finisher";
-                    conffinish.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.StarHit);
-                    conffinish.Description = StrikeRules.CreateBasicStrikeDescription2(conffinish.StrikeModifiers, null, null, null, "The target takes " + GetPreciseStrikeDamage(qf.Owner) + "d6/2 damage.", "You lose panache, whether the attack succeeds or fails.");
-                    conffinish.ActionCost = 1;
-                    conffinish.StrikeModifiers.OnEachTarget = async delegate (Creature owner, Creature victim, CheckResult result)
-                    {
-                        int preciseDamage = GetPreciseStrikeDamage(owner);
-                        if (result == CheckResult.Failure)
-                        {
-                            HalfDiceFormula halfdamage = new HalfDiceFormula(DiceFormula.FromText(preciseDamage.ToString() + "d6", "Precise Strike"), "Miss with Confident Finisher");
-                            DiceFormula fulldamage = DiceFormula.FromText(preciseDamage.ToString() + "d6", "Miss with Precise Finisher");
-                            await CommonSpellEffects.DealDirectDamage(conffinish, qf.Owner.HasEffect(PreciseFinisherQEffectId) ? fulldamage : halfdamage, victim, result, conffinish.StrikeModifiers.CalculatedItem.WeaponProperties.DamageKind);
-                        }
-                        FinisherExhaustion(owner);
-                    };
-                    conffinish.Traits.Add(Finisher);
-                    return conffinish;
+                    return CreateConfidentFinisher(qf.Owner, item, false, conf);
                 }
                 return null;
             };
@@ -604,7 +698,7 @@ public class AddSwash
         });
 
     //Implemented as far as I'm aware, but the AI will never use the retort. Needs goodness.
-    public static Feat BonMot = new TrueFeat(ModManager.RegisterFeatName("BonMot", "Bon Mot {icon:Action}"), 1, "You launch an insightful quip at a foe, distracting them.", "Using one action, choose a foe within 30 feet of you and make a Diplomacy check against their Will DC, with the following effects:" + S.FourDegreesOfSuccess("The target is distracted and takes a -3 status penalty to Perception and to Will saves for 1 minute. The target can end the effect early by using a single action to retort to your quip.", "As success, but the penalty is -2.", null, "Your quip is atrocious. You take the same penalty an enemy would take had you succeeded. This lasts for one minute or until you use another Bon Mot and succeed."), new Trait[] { Trait.Auditory, Trait.Concentrate, Trait.Emotion, Trait.General, Trait.Linguistic, Trait.Mental, Trait.Skill }, null)
+    public static Feat BonMot = new TrueFeat(ModManager.RegisterFeatName("BonMot", "Bon Mot {icon:Action}"), 1, "You launch an insightful quip at a foe, distracting them.", "Using one action, choose a foe within 30 feet of you and make a Diplomacy check against their Will DC, with the following effects:" + S.FourDegreesOfSuccess("The target is distracted and takes a -3 status penalty to Perception and to Will saves for the rest of the encounter. The target can end the effect early by using a single action to retort to your quip.", "As success, but the penalty is -2.", null, "Your quip is atrocious. You take the same penalty an enemy would take had you succeeded. This lasts for the rest of the encounter or until you use another Bon Mot and succeed."), new Trait[] { Trait.Auditory, Trait.Concentrate, Trait.Emotion, Trait.General, Trait.Linguistic, Trait.Mental, Trait.Skill }, null)
         .WithPrerequisite(sheet => sheet.GetProficiency(Trait.Diplomacy) >= Proficiency.Trained, "You must be trained in Diplomacy.")
         .WithPermanentQEffect(null, delegate (QEffect qf)
         {
@@ -612,9 +706,9 @@ public class AddSwash
             {
                 if (section.PossibilitySectionId == PossibilitySectionId.OtherManeuvers)
                 {
-                    return new ActionPossibility(new CombatAction(qf.Owner, IllustrationName.Confusion, "Bon Mot", new Trait[] { Trait.Auditory, Trait.Concentrate, Trait.Emotion, Trait.Linguistic, Trait.Mental }, "Choose a foe within 30 feet of you and make a Diplomacy check (" + S.SkillBonus(qf.Owner, Skill.Diplomacy) + ") against their Will DC, with the following effects:" + S.FourDegreesOfSuccess("The target is distracted and takes a -3 status penalty to Perception and to Will saves for 1 minute. The target can end the effect early by using a single action to retort to your quip.", "As success, but the penalty is -2.", null, "Your quip is atrocious. You take the same penalty an enemy would take had you succeeded. This lasts for one minute or until you use another Bon Mot and succeed."), Target.Ranged(6)
-                        .WithAdditionalConditionOnTargetCreature((Creature self, Creature target) => (target.QEffects.Any((QEffect effect) => effect.Name == "Bon Mot")) ? Usability.NotUsableOnThisCreature("This enemy is already distracted.") : Usability.Usable)
-                        .WithAdditionalConditionOnTargetCreature((Creature self, Creature target) => target.DoesNotSpeakCommon ? Usability.NotUsableOnThisCreature("The creature cannot understand your words.") : Usability.Usable))
+                    return new ActionPossibility(new CombatAction(qfbonmot.Owner, IllustrationName.Confusion, "Bon Mot", new Trait[] { Trait.Auditory, Trait.Concentrate, Trait.Emotion, Trait.Linguistic, Trait.Mental }, "Choose a foe within 30 feet of you and make a Diplomacy check (" + S.SkillBonus(qf.Owner, Skill.Diplomacy) + ") against their Will DC, with the following effects:" + S.FourDegreesOfSuccess("The target is distracted and takes a -3 status penalty to Perception and to Will saves for the rest of the encounter The target can end the effect early by using a single action to retort to your quip.", "As success, but the penalty is -2.", null, "Your quip is atrocious. You take the same penalty an enemy would take had you succeeded. This lasts for the rest of the encounter or until you use another Bon Mot and succeed."), Target.Ranged(6)
+                            .WithAdditionalConditionOnTargetCreature((Creature self, Creature target) => (target.QEffects.Any((QEffect effect) => effect.Name == "Bon Mot")) ? Usability.NotUsableOnThisCreature("This enemy is already distracted.") : Usability.Usable)
+                            .WithAdditionalConditionOnTargetCreature((Creature self, Creature target) => target.DoesNotSpeakCommon ? Usability.NotUsableOnThisCreature("The creature cannot understand your words.") : Usability.Usable))
                         .WithActionCost(1)
                         .WithShortDescription("Use Diplomacy to distract a foe.")
                         .WithActionId(BonMotId)
@@ -624,95 +718,91 @@ public class AddSwash
                             switch (result)
                             {
                                 case CheckResult.CriticalSuccess:
-                                    if (caster.QEffects.Any((QEffect effect) => effect.Name == "Bon Mot"))
+                                    QEffect bonmotcrit = new QEffect("Bon Mot", "You have a -3 status penalty to Perception and to Will saves.", ExpirationCondition.Never, caster, IllustrationName.Confused)
                                     {
-                                        caster.RemoveAllQEffects((QEffect effect) => effect.Name == "Bon Mot");
-                                    }
-                                    QEffect bonmotcrit = new QEffect().WithExpirationAtStartOfSourcesTurn(caster, 10);
-                                    bonmotcrit.Name = "Bon Mot";
-                                    bonmotcrit.Illustration = IllustrationName.Confused;
-                                    bonmotcrit.Description = "You have a -3 status penalty to Perception and to Will saves.";
-                                    bonmotcrit.BonusToDefenses = delegate (QEffect thing, CombatAction something, Defense defense)
-                                    {
-                                        if (defense == Defense.Will || defense == Defense.Perception)
+                                        BonusToDefenses = delegate (QEffect thing, CombatAction something, Defense defense)
                                         {
-                                            return new Bonus(-3, BonusType.Status, "Bon Mot");
-                                        }
-                                        else return null;
-                                    };
-                                    bonmotcrit.ProvideMainAction = qftechnical =>
-                                    {
-                                        return new ActionPossibility(new CombatAction(bonmotcrit.Owner, IllustrationName.Rage, "Retort", new Trait[3] { Trait.Concentrate, Trait.Linguistic, Trait.Mental }, "You return the quip against you and attempt to remove the penalty from Bon Mot.", Target.Ranged(6)
-                                            .WithAdditionalConditionOnTargetCreature((Creature self, Creature target) => target == qf.Owner ? Usability.Usable : Usability.NotUsableOnThisCreature("Not owner")))
-                                            .WithActionCost(1)
-                                            .WithActiveRollSpecification(new ActiveRollSpecification(TaggedChecks.SkillCheck(Skill.Diplomacy), Checks.DefenseDC(Defense.Will)))
-                                            .WithEffectOnEachTarget(async (spell, caster, target, result) =>
+                                            if (defense == Defense.Will || defense == Defense.Perception)
                                             {
-                                                if (result >= CheckResult.Success)
+                                                return new Bonus(-3, BonusType.Status, "Bon Mot");
+                                            }
+                                            else return null;
+                                        },
+                                        ProvideMainAction = qftechnical =>
+                                        {
+                                            return new ActionPossibility(new CombatAction(qftechnical.Owner, IllustrationName.Rage, "Retort", new Trait[] { Trait.Concentrate, Trait.Linguistic, Trait.Mental }, "You return the quip against you and attempt to remove the penalty from Bon Mot.", Target.Ranged(6)
+                                                    .WithAdditionalConditionOnTargetCreature((Creature self, Creature retortTarget) => retortTarget == qftechnical.Source ? Usability.Usable : Usability.NotUsableOnThisCreature("Not owner")))
+                                                .WithActionCost(1)
+                                                .WithActiveRollSpecification(new ActiveRollSpecification(TaggedChecks.SkillCheck(Skill.Diplomacy), Checks.DefenseDC(Defense.Will)))
+                                                .WithEffectOnEachTarget(async (retortSpell, retortCaster, retortTarget, retortResult) =>
                                                 {
-                                                    bonmotcrit.Owner.RemoveAllQEffects((QEffect qf) => qf == bonmotcrit);
-                                                }
-                                            }));
+                                                    if (retortResult >= CheckResult.Success)
+                                                    {
+                                                        qftechnical.ExpiresAt = ExpirationCondition.Immediately;
+                                                    }
+                                                }));
+                                        },
+                                        CountsAsADebuff = true
                                     };
-                                    bonmotcrit.CountsAsADebuff = true;
                                     target.AddQEffect(bonmotcrit);
                                     break;
                                 case CheckResult.Success:
-                                    if (caster.QEffects.Any((QEffect effect) => effect.Name == "Bon Mot"))
+                                    QEffect bonmotwin = new QEffect("Bon Mot", "You have a -2 status penalty to Perception and to Will saves.", ExpirationCondition.Never, caster, IllustrationName.Confused)
                                     {
-                                        caster.RemoveAllQEffects((QEffect effect) => effect.Name == "Bon Mot");
-                                    }
-                                    QEffect bonmotwin = new QEffect().WithExpirationAtStartOfSourcesTurn(caster, 10);
-                                    bonmotwin.Name = "Bon Mot";
-                                    bonmotwin.Illustration = IllustrationName.Confused;
-                                    bonmotwin.Description = "You have a -2 status penalty to Perception and to Will saves.";
-                                    bonmotwin.BonusToDefenses = delegate (QEffect thing, CombatAction something, Defense defense)
-                                    {
-                                        if (defense == Defense.Will || defense == Defense.Perception)
+                                        BonusToDefenses = delegate (QEffect thing, CombatAction something, Defense defense)
                                         {
-                                            return new Bonus(-2, BonusType.Status, "Bon Mot");
-                                        }
-                                        else return null;
-                                    };
-                                    bonmotwin.ProvideMainAction = qftechnical =>
-                                    {
-                                        return new ActionPossibility(new CombatAction(bonmotwin.Owner, IllustrationName.Rage, "Retort", new Trait[3] { Trait.Concentrate, Trait.Linguistic, Trait.Mental }, "You return the quip against you and attempt to remove the penalty from Bon Mot.", Target.Ranged(6)
-                                            .WithAdditionalConditionOnTargetCreature((Creature self, Creature target) => self == qf.Owner ? Usability.Usable : Usability.NotUsableOnThisCreature("Not owner")))
-                                            .WithActionCost(1)
-                                            .WithActiveRollSpecification(new ActiveRollSpecification(TaggedChecks.SkillCheck(Skill.Diplomacy), Checks.DefenseDC(Defense.Will)))
-                                            .WithEffectOnEachTarget(async (spell, caster, target, result) =>
+                                            if (defense == Defense.Will || defense == Defense.Perception)
                                             {
-                                                if (result >= CheckResult.Success)
+                                                return new Bonus(-2, BonusType.Status, "Bon Mot");
+                                            }
+                                            else return null;
+                                        },
+                                        ProvideMainAction = qftechnical =>
+                                        {
+                                            return new ActionPossibility(new CombatAction(qftechnical.Owner, IllustrationName.Rage, "Retort", new Trait[] { Trait.Concentrate, Trait.Linguistic, Trait.Mental }, "You return the quip against you and attempt to remove the penalty from Bon Mot.", Target.Ranged(6)
+                                                    .WithAdditionalConditionOnTargetCreature((Creature self, Creature target) => self == qf.Owner ? Usability.Usable : Usability.NotUsableOnThisCreature("not " + caster.Name)))
+                                                .WithActionCost(1)
+                                                .WithActiveRollSpecification(new ActiveRollSpecification(TaggedChecks.SkillCheck(Skill.Diplomacy), Checks.DefenseDC(Defense.Will)))
+                                                .WithEffectOnEachTarget(async (spell, caster, target, result) =>
                                                 {
-                                                    bonmotwin.Owner.RemoveAllQEffects((QEffect qf) => qf == bonmotwin);
-                                                }
-                                            }));
+                                                    if (result >= CheckResult.Success)
+                                                    {
+                                                        qftechnical.ExpiresAt = ExpirationCondition.Immediately;
+                                                    }
+                                                }));
+                                        },
+                                        CountsAsADebuff = true
                                     };
-                                    bonmotwin.CountsAsADebuff = true;
                                     target.AddQEffect(bonmotwin);
                                     break;
                                 case CheckResult.CriticalFailure:
-                                    QEffect bonmotfumble = new QEffect().WithExpirationAtStartOfSourcesTurn(caster, 10);
-                                    bonmotfumble.Name = "Bon Mot";
-                                    bonmotfumble.Illustration = IllustrationName.Confused;
-                                    bonmotfumble.Description = "You have a -2 status penalty to Perception and to Will saves.";
-                                    bonmotfumble.BonusToDefenses = delegate (QEffect thing, CombatAction something, Defense defense)
+                                    QEffect bonmotfumble = new QEffect("Bon Mot", "You have a -2 status penalty to Perception and to Will saves.", ExpirationCondition.Never, caster, IllustrationName.Confused)
                                     {
-                                        if (defense == Defense.Will || defense == Defense.Perception)
+                                        BonusToDefenses = delegate(QEffect thing, CombatAction something, Defense defense)
                                         {
-                                            return new Bonus(-2, BonusType.Status, "Bon Mot");
-                                        }
-                                        else return null;
-                                    };
-                                    bonmotfumble.BonusToAttackRolls = delegate (QEffect effect, CombatAction action, Creature owner)
-                                    {
-                                        if (action.ActionId == ActionId.Seek)
+                                            if (defense == Defense.Will || defense == Defense.Perception)
+                                            {
+                                                return new Bonus(-2, BonusType.Status, "Bon Mot");
+                                            }
+                                            else return null;
+                                        },
+                                        BonusToAttackRolls = delegate(QEffect effect, CombatAction action, Creature owner)
                                         {
-                                            return new Bonus(-2, BonusType.Status, "Bon Mot Crit Fail");
-                                        }
-                                        else return null;
+                                            if (action.ActionId == ActionId.Seek)
+                                            {
+                                                return new Bonus(-2, BonusType.Status, "Bon Mot Crit Fail");
+                                            }
+                                            else return null;
+                                        },
+                                        AfterYouTakeActionAgainstTarget = async (qfThis, action, target, result) =>
+                                        {
+                                            if (action.ActionId == BonMotId && result >= CheckResult.Success)
+                                            {
+                                                qfThis.ExpiresAt = ExpirationCondition.Immediately;
+                                            }
+                                        },
+                                        CountsAsADebuff = true
                                     };
-                                    bonmotfumble.CountsAsADebuff = true;
                                     caster.AddQEffect(bonmotfumble);
                                     break;
                             }
@@ -755,7 +845,7 @@ public class AddSwash
         });
 
     //This one's a test, originally to learn how to add stuff and later to expedite testing with Panache. I think I'll leave it in just in case someone wants to poke around in the mod.
-    public static Feat AddPanache = new TrueFeat(FeatName.CustomFeat, 1, "You give yourself panache as a test.", "Test to see if the feat and condition load.", new Trait[1] { SwashTrait }, null)
+    public static Feat AddPanache = new TrueFeat(FeatName.CustomFeat, 1, "You give yourself panache as a test.", "Test to see if the feat and condition load.", new Trait[] { SwashTrait }, null)
         .WithOnCreature((sheet, creature) =>
         {
             QEffect Panacheer = new QEffect()
@@ -808,7 +898,7 @@ public class AddSwash
                     disarmed.CannotExpireThisTurn = true;
                     disarmed.ProvideMainAction = (qftechnical =>
                     {
-                        return new ActionPossibility(new CombatAction(disarmed.Owner, IllustrationName.Fist, "Recover Grip", new Trait[2] { Trait.Interact, Trait.Manipulate }, "You adjust your grip on your weapon and remove the penalty from Disarm.", Target.Self())
+                        return new ActionPossibility(new CombatAction(disarmed.Owner, IllustrationName.Fist, "Recover Grip", new Trait[] { Trait.Interact, Trait.Manipulate }, "You adjust your grip on your weapon and remove the penalty from Disarm.", Target.Self())
                             .WithEffectOnEachTarget(async (caster, spell, target, result) =>
                             {
                                 disarmed.Owner.RemoveAllQEffects((QEffect thing) => thing.Name == "Weakened grasp");
@@ -829,9 +919,7 @@ public class AddSwash
         ModManager.AddFeat(newFeat);
     }
 
-    //TODO Probably worth making a function that will do the Flying Blade finishers automatically. The idea would be: Get a finisher. If its item has the Thrown trait, create a thrown version.
-
-    //Grants thrown versions of Confident Finisher, Basic Finisher, Unbalancing Finisher, Bleeding Finisher, and Stunning Finisher, as long as your weapons meet the criteria. It's usually down to GM judgement which finishers Flying Blade applies to anyway.
+    //Grants thrown versions of Confident Finisher, Basic Finisher, Unbalancing Finisher, Bleeding Finisher, and Stunning Finisher, as long as your weapons meet the criteria. It's usually down to GM judgement which finishers Flying Blade applies to, so I choose to allow it for any finisher without a complicated targeting scheme.
     public static Feat FlyingBlade = new TrueFeat(ModManager.RegisterFeatName("FlyingBlade", "Flying Blade"), 1, "You've learned to apply your flashy techniques to thrown weapons just as easily as melee.", "When you have panache, you apply your additional damage from Precise Strike on ranged Strikes you make with a thrown weapon within its first range increment. The thrown weapon must be an agile or finesse weapon.\n\nAdditionally, if you have the following finishers available to you, you can perform them with thrown weapons (within the weapon's first range increment): Confident Finisher, Basic Finisher, Unbalancing Finisher, Bleeding Finisher, Stunning Finisher.", new Trait[] { SwashTrait }, null)
         .WithPrerequisite(sheet => sheet.AllFeats.Contains(PreciseStrike), "You must have the Precise Strike feature.")
         .WithPermanentQEffect(null, delegate (QEffect qf)
@@ -847,32 +935,10 @@ public class AddSwash
                         bool flag24 = qf.Owner.HasEffect(PanacheId);
                         if (flag23 && flag24)
                         {
-                            CombatAction confthrow = StrikeRules.CreateStrike(qf.Owner, item, RangeKind.Ranged, -1, thrown: true, strikeModifiers8);
-                            confthrow.Name = "Confident Finisher (Thrown)";
-                            confthrow.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.StarHit);
-                            if (qf.Owner.Level < 5)
-                            {
-                                confthrow.Description = StrikeRules.CreateBasicStrikeDescription2(confthrow.StrikeModifiers, null, null, null, "The target takes " + GetPreciseStrikeDamage(qf.Owner).ToString() + "d6/2 damage.", "You lose panache, whether the attack succeeds or fails. The weapon falls in the target's square.");
-                            }
-                            else
-                            {
-                                confthrow.Description = StrikeRules.CreateBasicStrikeDescription2(confthrow.StrikeModifiers, null, null, null, "The target takes " + GetPreciseStrikeDamage(qf.Owner).ToString() + "d6/2 damage.", "You lose panache, whether the attack succeeds or fails. The weapon falls in the target's square.");
-                            }
-
-                            confthrow.ActionCost = 1;
-                            confthrow.Target = Target.Ranged(item.WeaponProperties.RangeIncrement);
-                            confthrow.StrikeModifiers.OnEachTarget = async delegate (Creature owner, Creature victim, CheckResult result)
-                            {
-                                if (result == CheckResult.Failure)
-                                {
-                                    HalfDiceFormula halfdamage = new HalfDiceFormula(DiceFormula.FromText(GetPreciseStrikeDamage(owner).ToString() + "d6", "Precise Strike"), "Miss with Confident Finisher");
-                                    DiceFormula fulldamage = DiceFormula.FromText(GetPreciseStrikeDamage(owner).ToString() + "d6", "Miss with Precise Finisher");
-                                    await CommonSpellEffects.DealDirectDamage(confthrow, qf.Owner.HasEffect(PreciseFinisherQEffectId) ? fulldamage : halfdamage, victim, result, confthrow.StrikeModifiers.CalculatedItem.WeaponProperties.DamageKind);
-                                }
-                                FinisherExhaustion(confthrow.Owner);
-                            };
-                            confthrow.Traits.Add(Finisher);
-                            return confthrow;
+                            CombatAction thrown = CreateConfidentFinisher(qf.Owner, item, true, strikeModifiers8);
+                            thrown.Name += " (Thrown)";
+                            thrown.Target = Target.Ranged(item.WeaponProperties.RangeIncrement);
+                            return thrown;
                         }
                         return null;
                     }
@@ -890,18 +956,10 @@ public class AddSwash
                         bool flag2 = qf.Owner.HasEffect(PanacheId);
                         if (flag && flag2)
                         {
-                            CombatAction basicFinisher = StrikeRules.CreateStrike(qf.Owner, item, RangeKind.Ranged, -1, thrown: true, basic);
-                            basicFinisher.Name = "Basic Finisher (Thrown)";
-                            basicFinisher.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.StarHit);
-                            basicFinisher.Description = StrikeRules.CreateBasicStrikeDescription2(basicFinisher.StrikeModifiers, null, null, null, null, "You lose panache, whether the attack succeeds or fails.");
-                            basicFinisher.ActionCost = 1;
-                            basicFinisher.Target = Target.Ranged(item.WeaponProperties.RangeIncrement);
-                            basicFinisher.StrikeModifiers.OnEachTarget = async delegate (Creature owner, Creature victim, CheckResult result)
-                            {
-                                FinisherExhaustion(owner);
-                            };
-                            basicFinisher.Traits.Add(Finisher);
-                            return basicFinisher;
+                            CombatAction basicThrown = AddMulticlassSwash.CreateBasicFinisher(qf.Owner, item, true, basic);
+                            basicThrown.Name += " (Thrown)";
+                            basicThrown.Target = Target.Ranged(item.WeaponProperties.RangeIncrement);
+                            return basicThrown;
                         }
                         else return null;
                     }
@@ -919,15 +977,10 @@ public class AddSwash
                         bool flag22 = qf.Owner.HasEffect(PanacheId);
                         if (flag21 && flag22)
                         {
-                            CombatAction combatAction4 = StrikeRules.CreateStrike(qf.Owner, item, RangeKind.Ranged, -1, thrown: true, strikeModifiers7);
-                            combatAction4.Name = "Unbalancing Finisher (Thrown)";
-                            combatAction4.ActionId = UnbalancingFinisherId;
-                            combatAction4.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.Trip);
-                            combatAction4.Description = StrikeRules.CreateBasicStrikeDescription2(combatAction4.StrikeModifiers, null, "The target is flat-footed until the end of your next turn.", null, null, "You lose panache, whether the attack succeeds or fails. The weapon falls in the target's square.");
-                            combatAction4.ActionCost = 1;
-                            combatAction4.Target = Target.Ranged(item.WeaponProperties.RangeIncrement);
-                            combatAction4.Traits.Add(Finisher);
-                            return combatAction4;
+                            CombatAction unbalThrown = CreateUnbalancingFinisher(qf.Owner, item, true, strikeModifiers7);
+                            unbalThrown.Name += " (Thrown)";
+                            unbalThrown.Target = Target.Ranged(item.WeaponProperties.RangeIncrement);
+                            return unbalThrown;
                         }
 
                         return null;
@@ -947,22 +1000,10 @@ public class AddSwash
                         bool flag20 = item.WeaponProperties.DamageKind == DamageKind.Piercing || item.WeaponProperties.DamageKind == DamageKind.Slashing;
                         if (flag18 && flag19 && flag20)
                         {
-                            CombatAction combatAction3 = StrikeRules.CreateStrike(qf.Owner, item, RangeKind.Ranged, -1, thrown: true, strikeModifiers6);
-                            combatAction3.Name = "Bleeding Finisher (Thrown)";
-                            combatAction3.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.BloodVendetta);
-                            combatAction3.Description = StrikeRules.CreateBasicStrikeDescription2(combatAction3.StrikeModifiers, null, "The target takes 3d6 persistent bleed damage.", null, null, "You lose panache, whether the attack succeeds or fails. The weapon falls in the target's square.");
-                            combatAction3.ActionCost = 1;
-                            combatAction3.Target = Target.Ranged(item.WeaponProperties.RangeIncrement);
-                            combatAction3.StrikeModifiers.OnEachTarget = async delegate (Creature owner, Creature victim, CheckResult result)
-                            {
-                                if (result >= CheckResult.Success)
-                                {
-                                    victim.AddQEffect(QEffect.PersistentDamage(GetPreciseStrikeDamage(owner).ToString() + "d6", DamageKind.Bleed));
-                                }
-                                FinisherExhaustion(qf.Owner);
-                            };
-                            combatAction3.Traits.Add(Finisher);
-                            return combatAction3;
+                            CombatAction bleedThrown = CreateBleedingFinisher(qf.Owner, item, true, strikeModifiers6);
+                            bleedThrown.Name += " (Thrown)";
+                            bleedThrown.Target = Target.Ranged(item.WeaponProperties.RangeIncrement);
+                            return bleedThrown;
                         }
 
                         return null;
@@ -981,40 +1022,10 @@ public class AddSwash
                         bool flag17 = qf.Owner.HasEffect(PanacheId);
                         if (flag16 && flag17)
                         {
-                            CombatAction stun2 = StrikeRules.CreateStrike(qf.Owner, item, RangeKind.Ranged, -1, thrown: true, strikeModifiers5);
-                            stun2.Name = "Stunning Finisher (Thrown)";
-                            stun2.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.Stunned);
-                            stun2.Description = StrikeRules.CreateBasicStrikeDescription2(stun2.StrikeModifiers, null, "The target makes a DC " + stun2.Owner.ClassOrSpellDC() + " Fortitude save (this is an incapacitation effect). On a success, it can't take reactions for 1 turn. On a failure, it is stunned 1, and on a critical failure, it is stunned 3.", null, null, "You lose panache, whether the attack succeeds or fails. The weapon falls in the target's square.");
-                            stun2.ActionCost = 1;
-                            stun2.Target = Target.Ranged(item.WeaponProperties.RangeIncrement);
-                            stun2.Traits.Add(Finisher);
-                            stun2.StrikeModifiers.OnEachTarget = async delegate (Creature owner, Creature victim, CheckResult result)
-                            {
-                                FinisherExhaustion(owner);
-                                if (result >= CheckResult.Success)
-                                {
-                                    CombatAction theactualstun2 = CombatAction.CreateSimple(stun2.Owner, "Stunning Finisher", new Trait[] { Trait.Incapacitation });
-                                    switch (CommonSpellEffects.RollSavingThrow(victim, theactualstun2, Defense.Fortitude, stun2.Owner.ClassOrSpellDC()))
-                                    {
-                                        case CheckResult.Success:
-                                            victim.AddQEffect(new QEffect(ExpirationCondition.ExpiresAtStartOfYourTurn)
-                                            {
-                                                Name = "Cannot take reactions",
-                                                Illustration = IllustrationName.ReactionUsedUp,
-                                                Description = "You cannot take reactions until the start of your turn.",
-                                                Id = QEffectId.CannotTakeReactions
-                                            });
-                                            break;
-                                        case CheckResult.Failure:
-                                            victim.AddQEffect(QEffect.Stunned(1));
-                                            break;
-                                        case CheckResult.CriticalFailure:
-                                            victim.AddQEffect(QEffect.Stunned(3));
-                                            break;
-                                    }
-                                }
-                            };
-                            return stun2;
+                            CombatAction stunThrown = CreateStunningFinisher(qf.Owner, item, true, strikeModifiers5);
+                            stunThrown.Name += " (Thrown)";
+                            stunThrown.Target = Target.Ranged(item.WeaponProperties.RangeIncrement);
+                            return stunThrown;
                         }
                         return null;
                     }
@@ -1047,47 +1058,11 @@ public class AddSwash
             };
         });
 
-    public static Feat GoadingFeint = new TrueFeat(ModManager.RegisterFeatName("Goading Feint"), 1, "When you trick a foe, you can goad them into overextending their next attack.", "On a Feint, you can use the following success and critical success effects instead of any other effects you would gain when you Feint; if you do, normal abilities that apply on a Feint no longer apply.\n\n{b}Critical Success:{/b} The target takes a -2 circumstance penalty to all its attack rolls against you before the end of its next turn.\n{b}Success:{/b} The target takes a -2 circumstance penalty to the next attack roll it makes against you before the end of its next turn.", new Trait[1] { SwashTrait }, null)
+    public static Feat GoadingFeint = new TrueFeat(ModManager.RegisterFeatName("Goading Feint"), 1, "When you trick a foe, you can goad them into overextending their next attack.", "On a Feint, you can use the following success and critical success effects instead of any other effects you would gain when you Feint; if you do, normal abilities that apply on a Feint no longer apply.\n\n{b}Critical Success:{/b} The target takes a -2 circumstance penalty to all its attack rolls against you before the end of its next turn.\n{b}Success:{/b} The target takes a -2 circumstance penalty to the next attack roll it makes against you before the end of its next turn.", new Trait[] { SwashTrait }, null)
         .WithPrerequisite((CalculatedCharacterSheetValues values) => values.GetProficiency(Trait.Deception) >= Proficiency.Trained, "You must be trained in Deception")
         .WithPermanentQEffect("When you Feint a creature, you can give them a penalty to AC instead of the normal effects.", delegate (QEffect qf)
         {
-            QEffect goaded = new QEffect()
-            {
-                Name = "Goaded",
-                Illustration = IllustrationName.Confused,
-                Description = "You are goaded and have a -2 circumstance penalty to your next attack roll against the goading creature before the end of your turn.",
-                ExpiresAt = ExpirationCondition.ExpiresAtEndOfYourTurn,
-                BonusToAttackRolls = delegate (QEffect bonus, CombatAction bonk, Creature? someone)
-                {
-                    if (someone == qf.Owner)
-                    {
-                        return new Bonus(-2, BonusType.Circumstance, "Goaded");
-                    }
-                    else return null;
-                },
-                AfterYouMakeAttackRoll = delegate (QEffect goaded, CheckBreakdownResult result)
-                {
-                    goaded.Owner.RemoveAllQEffects((QEffect provoked) => provoked.Name == "Goaded");
-                },
-                CountsAsADebuff = true
-            };
-            QEffect bettergoaded = new QEffect()
-            {
-                Name = "Goaded",
-                Illustration = IllustrationName.Confused,
-                Description = "You are goaded and have a -2 circumstance penalty to attack rolls against the goading creature until the end of your turn.",
-                ExpiresAt = ExpirationCondition.ExpiresAtEndOfYourTurn,
-                BonusToAttackRolls = delegate (QEffect bonus, CombatAction bonk, Creature? someone)
-                {
-                    if (someone == qf.Owner)
-                    {
-                        return new Bonus(-2, BonusType.Circumstance, "Goaded");
-                    }
-                    else return null;
-                },
-                CountsAsADebuff = true
-            };
-            qf.AfterYouTakeAction = async delegate (QEffect qfaction, CombatAction action)
+            qf.AfterYouTakeActionAgainstTarget = async delegate (QEffect qfaction, CombatAction action, Creature target, CheckResult result)
             {
                 bool flag = action.ActionId == ActionId.Feint;
                 bool flag2 = flag;
@@ -1096,21 +1071,37 @@ public class AddSwash
                 {
                     flag2 = await qf.Owner.Battle.AskForConfirmation(qf.Owner, IllustrationName.Action, "Would you like to goad the target?", "Goad");
 
-                    if (flag2 && action.CheckResult == CheckResult.Success)
+                    if (flag2 && action.CheckResult >= CheckResult.Success)
                     {
-                        action.ChosenTargets.ChosenCreature!.AddQEffect(goaded);
-                        action.ChosenTargets.ChosenCreature.RemoveAllQEffects((QEffect thing) => (thing.Name == "Flat-footed in melee") || (thing.Name == "Flat-footed to " + action.Owner.Name));
-                    }
-                    else if (flag2 && action.CheckResult == CheckResult.CriticalSuccess)
-                    {
-                        action.ChosenTargets.ChosenCreature!.AddQEffect(bettergoaded);
-                        action.ChosenTargets.ChosenCreature.RemoveAllQEffects((QEffect thing) => (thing.Name == "Flat-footed in melee") || (thing.Name == "Flat-footed to " + action.Owner.Name));
+                        QEffect goaded = new QEffect("Goaded", "You have a -2 circumstance penalty to your next attack roll against " + qfaction.Owner.Name + " before the end of your turn.", ExpirationCondition.ExpiresAtEndOfYourTurn, qfaction.Owner, IllustrationName.Confused)
+                        {
+                            BonusToAttackRolls = delegate (QEffect bonus, CombatAction bonk, Creature? someone)
+                            {
+                                if (someone == qfaction.Owner)
+                                {
+                                    return new Bonus(-2, BonusType.Circumstance, "Goaded");
+                                }
+                                else return null;
+                            },
+                            AfterYouMakeAttackRoll = delegate (QEffect goaded, CheckBreakdownResult result)
+                            {
+                                goaded.ExpiresAt = ExpirationCondition.Immediately;
+                            },
+                            CountsAsADebuff = true
+                        };
+                        if (result == CheckResult.Success)
+                        {
+                            goaded.Description = "You have a -2 circumstance penalty on all attack rolls against " + qfaction.Owner.Name + " before the end of your next turn.";
+                            goaded.AfterYouMakeAttackRoll = null;
+                        }
+                        target.AddQEffect(goaded);
+                        target.RemoveAllQEffects((QEffect thing) => (thing.Name == "Flat-footed in melee") || (thing.Name == "Flat-footed to " + action.Owner.Name));
                     }
                 }
             };
         });
 
-    public static Feat OneForAll = new TrueFeat(ModManager.RegisterFeatName("One For All", "One For All {icon:Action}"), 1, "With precisely the right words of encouragement, you bolster an ally's efforts.", "Using one action, designate an ally within 30 feet. The next time that ally makes an attack roll or skill check, you may use your reaction to attempt a DC 20 Diplomacy check with the following effects:\n{b}Critical Success:{/b} You grant the ally a +2 circumstance bonus to their attack roll or skill check. If your swashbuckler style is Wit, you gain panache.\n{b}Success:{/b} You grant the ally a +1 circumstance bonus to their attack roll or skill check. If your swashbuckler style is Wit, you gain panache.\n{b}Critical Failure:{/b} The ally takes a -1 circumstance penalty to their attack roll or skill check.", new Trait[6] { Trait.Auditory, Trait.Concentrate, Trait.Emotion, Trait.Linguistic, Trait.Mental, SwashTrait })
+    public static Feat OneForAll = new TrueFeat(ModManager.RegisterFeatName("One For All", "One For All {icon:Action}"), 1, "With precisely the right words of encouragement, you bolster an ally's efforts.", "Using one action, designate an ally within 30 feet. The next time that ally makes an attack roll or skill check, you may use your reaction to attempt a DC 20 Diplomacy check with the following effects:\n{b}Critical Success:{/b} You grant the ally a +2 circumstance bonus to their attack roll or skill check. If your swashbuckler style is Wit, you gain panache.\n{b}Success:{/b} You grant the ally a +1 circumstance bonus to their attack roll or skill check. If your swashbuckler style is Wit, you gain panache.\n{b}Critical Failure:{/b} The ally takes a -1 circumstance penalty to their attack roll or skill check.", new Trait[] { Trait.Auditory, Trait.Concentrate, Trait.Emotion, Trait.Linguistic, Trait.Mental, SwashTrait })
         .WithPrerequisite((CalculatedCharacterSheetValues values) => values.GetProficiency(Trait.Diplomacy) >= Proficiency.Trained, "You must be trained in Diplomacy.")
         .WithPermanentQEffect(null, delegate (QEffect qf)
         {
@@ -1119,17 +1110,72 @@ public class AddSwash
                 if (section.PossibilitySectionId == PossibilitySectionId.SkillActions)
                 {
                     bool aidPrepareIdExists = ModManager.TryParse<ActionId>("PrepareToAid", out ActionId aidPrepareId);
-                    return new ActionPossibility(new CombatAction(qf.Owner, IllustrationName.SoundBurst, "One For All", new Trait[5] { Trait.Auditory, Trait.Concentrate, Trait.Emotion, Trait.Linguistic, Trait.Mental }, "Attempt to assist an ally's next skill check or attack roll.", Target.RangedFriend(6)
-                    .WithAdditionalConditionOnTargetCreature((Creature self, Creature target) => (target.QEffects.Any((QEffect effect) => effect.Name == "Aided by " + qf.Owner.Name)) ? Usability.NotUsableOnThisCreature("You are already aiding this ally.") : Usability.Usable)
-                    .WithAdditionalConditionOnTargetCreature((Creature self, Creature target) => (target == self) ? Usability.NotUsableOnThisCreature("You can't Aid yourself.") : Usability.Usable))
+                    return new ActionPossibility(new CombatAction(qf.Owner, IllustrationName.SoundBurst, "One For All", new Trait[] { Trait.Auditory, Trait.Concentrate, Trait.Emotion, Trait.Linguistic, Trait.Mental }, "Attempt to assist an ally's next skill check or attack roll.", Target.RangedFriend(6)
+                        .WithAdditionalConditionOnTargetCreature((Creature self, Creature target) => (target.QEffects.Any((QEffect effect) => effect.Name == "Aided by " + qf.Owner.Name)) ? Usability.NotUsableOnThisCreature("You are already aiding this ally.") : Usability.Usable)
+                        .WithAdditionalConditionOnTargetCreature((Creature self, Creature target) => (target == self) ? Usability.NotUsableOnThisCreature("You can't Aid yourself.") : Usability.Usable))
                     .WithActionCost(1)
                     .WithActionId(aidPrepareId)
                     .WithEffectOnEachTarget(async (spell, caster, target, result) =>
                     {
-                        QEffect aided = new QEffect();
-                        aided.Name = "Aided by " + qf.Owner.Name;
-                        aided.Illustration = IllustrationName.Guidance;
-                        aided.Description = qf.Owner.Name + " may attempt to assist you and provide a bonus to your next attack roll or skill check.";
+                        QEffect aided = new QEffect("Aided by " + qf.Owner.Name, qf.Owner.Name + " may attempt to assist you and provide a bonus to your next attack roll or skill check.", ExpirationCondition.Never, caster, IllustrationName.Guidance)
+                        {
+                            BeforeYourActiveRoll = async delegate (QEffect effect, CombatAction action, Creature self)
+                            {
+                                bool aidIdExists = ModManager.TryParse<ActionId>("AidReaction", out ActionId aidId);
+                                CombatAction aid = new CombatAction(caster, IllustrationName.SoundBurst, "Aid", new Trait[] { }, "Attempt to Aid an ally.", Target.Self())
+                                    .WithActionCost(0)
+                                    .WithActionId(aidId)
+                                    .WithActiveRollSpecification(new ActiveRollSpecification(TaggedChecks.SkillCheck(Skill.Diplomacy), Checks.FlatDC(20)))
+                                    .WithEffectOnSelf(async (spell, self) =>
+                                    {
+                                        if (self.HasFeat(WitStyle) && spell.CheckResult >= CheckResult.Success)
+                                        {
+                                            self.AddQEffect(CreatePanache(Skill.Diplomacy));
+                                        }
+                                    })
+                                    .WithEffectOnEachTarget(async (spell, caster, target, result) =>
+                                    {
+                                        switch (result)
+                                        {
+                                            case CheckResult.CriticalSuccess:
+                                                target.AddQEffect(new QEffect(ExpirationCondition.Ephemeral)
+                                                {
+                                                    BonusToAllChecksAndDCs = delegate (QEffect thing)
+                                                    {
+                                                        return new Bonus(2, BonusType.Circumstance, "One For All");
+                                                    }
+                                                });
+                                                break;
+                                        case CheckResult.Success:
+                                            target.AddQEffect(new QEffect(ExpirationCondition.Ephemeral)
+                                            {
+                                                BonusToAllChecksAndDCs = delegate (QEffect thing)
+                                                {
+                                                    return new Bonus(1, BonusType.Circumstance, "One For All");
+                                                }
+                                            });
+                                            break;
+                                        case CheckResult.CriticalFailure:
+                                            target.AddQEffect(new QEffect(ExpirationCondition.Ephemeral)
+                                            {
+                                                BonusToAllChecksAndDCs = delegate (QEffect thing)
+                                                {
+                                                    return new Bonus(-1, BonusType.Circumstance, "One For All");
+                                                }
+                                            });
+                                            break;
+                                        }
+                                        effect.ExpiresAt = ExpirationCondition.Immediately; 
+                                        //target.RemoveAllQEffects((QEffect thing) => thing.Name == "Aided by " + qf.Owner.Name);
+                                    });
+                                aid.ChosenTargets = ChosenTargets.CreateSingleTarget(self);
+                                if (await qf.Owner.Battle.AskToUseReaction(qf.Owner, "Would you like to roll a Diplomacy check to Aid your ally's check?"))
+                                {
+                                    await aid.AllExecute();
+                                }
+                            }
+                        };
+                        /*
                         aided.BeforeYourActiveRoll = async delegate (QEffect effect, CombatAction action, Creature self)
                         {
                             bool aidIdExists = ModManager.TryParse<ActionId>("AidReaction", out ActionId aidId);
@@ -1187,6 +1233,7 @@ public class AddSwash
                                 await aid.AllExecute();
                             }
                         };
+                        */
                         target.AddQEffect(aided);
                     }));
                 }
@@ -1228,17 +1275,13 @@ public class AddSwash
     public static Feat Antagonize = new TrueFeat(ModManager.RegisterFeatName("Antagonize"), 2, "Your taunts and threats earn your foes' ire.", "When you Demoralize a foe, its frightened condition can't decrease below 1 until it takes a hostile action against you or it cannot see you.", new Trait[] { SwashTrait })
         .WithPermanentQEffect("Enemies can't recover from your Demoralize actions without taking hostile actions against you.", delegate (QEffect qf)
         {
-            qf.AfterYouTakeAction = async delegate (QEffect fear, CombatAction demoralize)
+            qf.AfterYouTakeActionAgainstTarget = async delegate (QEffect fear, CombatAction demoralize, Creature target, CheckResult result)
             {
-                if (demoralize.ActionId == ActionId.Demoralize && demoralize.CheckResult >= CheckResult.Success)
+                if (demoralize.ActionId == ActionId.Demoralize && result >= CheckResult.Success)
                 {
-                    QEffect antagonized = new QEffect()
+                    QEffect antagonized = new QEffect("Antagonized", "This target cannot lower their Frightened value below 1 until taking a hostile action against " + qf.Owner.Name + ".", ExpirationCondition.Never, demoralize.Owner, IllustrationName.Rage)
                     {
-                        Name = "Antagonized",
                         Id = QEffectId.DirgeOfDoomFrightenedSustainer,
-                        Illustration = IllustrationName.Rage,
-                        Description = "This target cannot lower their Frightened value below 1 until taking a hostile action against " + qf.Owner.Name + ".",
-                        ExpiresAt = ExpirationCondition.Never,
                         EndOfYourTurn = async delegate (QEffect fright, Creature victim)
                         {
                             if (qf.Owner.DetectionStatus.Undetected)
@@ -1261,7 +1304,7 @@ public class AddSwash
                             }
                         }
                     };
-                    demoralize.ChosenTargets.ChosenCreature!.AddQEffect(antagonized);
+                    target.AddQEffect(antagonized);
                 }
             };
         });
@@ -1269,51 +1312,20 @@ public class AddSwash
     public static Feat UnbalancingFinisher = new TrueFeat(ModManager.RegisterFeatName("Unbalancing Finisher", "Unbalancing Finisher {icon:Action}"), 2, "You attack with a flashy assault that leaves your target off balance.", "Make a melee Strike. If you hit and deal damage, your target is flat-footed until the end of your next turn.", new Trait[] { SwashTrait, Finisher })
         .WithPermanentQEffect(null, delegate (QEffect qf)
         {
-            qf.AfterYouDealDamage = async delegate (Creature self, CombatAction action, Creature target)
-            {
-                if (action.ActionId == UnbalancingFinisherId)
-                {
-                    target.AddQEffect(new QEffect()
-                    {
-                        Name = "Unbalanced",
-                        Description = "You are flat-footed until the end of " + target.Name + "'s next turn.",
-                        Illustration = IllustrationName.Flatfooted,
-                        IsFlatFootedTo = (QEffect all, Creature? everyone, CombatAction? everything) => "Unbalancing Finisher",
-                        ExpiresAt = ExpirationCondition.ExpiresAtEndOfSourcesTurn,
-                        Source = qf.Owner,
-                        CannotExpireThisTurn = true,
-                        CountsAsADebuff = true
-                    });
-                }
-            };
-            qf.AfterYouTakeAction = async delegate (QEffect effect, CombatAction action)
-            {
-                if (action.ActionId == UnbalancingFinisherId)
-                {
-                    FinisherExhaustion(action.Owner);
-                }
-            };
             qf.ProvideStrikeModifier = delegate (Item item)
             {
                 StrikeModifiers unbalancing = new StrikeModifiers();
-                bool flag = item.HasTrait(Trait.Agile) || item.HasTrait(Trait.Finesse) || item.HasTrait(Trait.Unarmed);
+                bool flag = item.HasTrait(Trait.Agile) || item.HasTrait(Trait.Finesse);
                 bool flag2 = qf.Owner.HasEffect(PanacheId);
                 if (flag && flag2)
                 {
-                    CombatAction unbal = qf.Owner.CreateStrike(item, -1, unbalancing);
-                    unbal.Name = "Unbalancing Finisher";
-                    unbal.ActionId = UnbalancingFinisherId;
-                    unbal.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.Trip);
-                    unbal.Description = StrikeRules.CreateBasicStrikeDescription2(unbal.StrikeModifiers, null, "The target is flat-footed until the end of your next turn.", null, null, "You lose panache, whether the attack succeeds or fails.");
-                    unbal.ActionCost = 1;
-                    unbal.Traits.Add(Finisher);
-                    return unbal;
+                    return CreateUnbalancingFinisher(qf.Owner, item, false, unbalancing);
                 }
                 else return null;
             };
         });
 
-    public static Feat FinishingFollowThrough = new TrueFeat(ModManager.RegisterFeatName("Finishing Follow-Through", "Finishing Follow-Through"), 2, "Finishing a foe maintains your swagger.", "You gain panache if your finisher reduces an enemy to 0 HP.", new Trait[1] { SwashTrait }, null)
+    public static Feat FinishingFollowThrough = new TrueFeat(ModManager.RegisterFeatName("Finishing Follow-Through", "Finishing Follow-Through"), 2, "Finishing a foe maintains your swagger.", "You gain panache if your finisher reduces an enemy to 0 HP.", new Trait[] { SwashTrait }, null)
         .WithPermanentQEffect("You gain panache when your finisher defeats an enemy.", delegate (QEffect qf)
         {
             qf.AfterYouDealDamage = async delegate (Creature you, CombatAction action, Creature target)
@@ -1349,17 +1361,12 @@ public class AddSwash
             {
                 if (action.ActionId == ActionId.TumbleThrough && action.CheckResult >= CheckResult.Success && action.ChosenTargets.ChosenCreature != null)
                 {
-                    action.ChosenTargets.ChosenCreature.AddQEffect(new QEffect
+                    action.ChosenTargets.ChosenCreature.AddQEffect(new QEffect("Tumbled Behind", "You're flat-footed to the next attack that " + qf.Owner.Name + " makes before the end of the turn.", ExpirationCondition.ExpiresAtEndOfSourcesTurn, effect.Owner, IllustrationName.Flatfooted)
                     {
-                        Name = "Tumbled Behind",
-                        Illustration = IllustrationName.Flatfooted,
-                        Description = "You're flat-footed to the next attack that " + qf.Owner.Name + " makes before the end of the turn.",
-                        IsFlatFootedTo = (QEffect all, Creature? everyone, CombatAction? everything) => "Tumble Behind",
-                        ExpiresAt = ExpirationCondition.ExpiresAtEndOfSourcesTurn,
-                        Source = qf.Owner,
+                        IsFlatFootedTo = (QEffect all, Creature? everyone, CombatAction? everything) => everyone != null && everyone == action.Owner ? "Tumble Behind" : null,
                         AfterYouAreTargeted = async delegate (QEffect effect, CombatAction strike)
                         {
-                            if (strike.HasTrait(Trait.Strike))
+                            if (strike.HasTrait(Trait.Strike) && (strike.Owner == action.Owner))
                             {
                                 effect.ExpiresAt = ExpirationCondition.Immediately;
                             }
@@ -1445,11 +1452,13 @@ public class AddSwash
     public static Feat GuardiansDeflection = new TrueFeat(ModManager.RegisterFeatName("Guardian's Deflection", "Guardian's Deflection {icon:Reaction}"), 4, "You use your weapon to deflect an attack made against an ally.", "{b}Trigger:{/b} An ally within your melee reach is hit by an attack, you can see the attacker, and a +2 circumstance bonus to AC would turn the critical hit into a hit or the hit into a miss.\n\n{b}Requirements: {/b} You are wielding a single one-handed weapon and have your other hand free.\n\n You use your weapon to deflect the attack against your ally, granting them a +2 circumstance bonus against the triggering attack. This turns the triggering critical hit into a hit, or the triggering hit into a miss.", new Trait[] { SwashTrait }, null)
         .WithPermanentQEffect(delegate (QEffect qf)
         {
+            //Might be worth reworking to use zones. They're better for aura effects like this.
+            //TODO: Rework to account for reach. I originally built this before Reach was implemented.
             qf.StateCheck = delegate (QEffect deflect)
             {
-                foreach (Creature ally in qf.Owner.Battle.AllCreatures.Where((Creature friend) => (friend.DistanceTo(qf.Owner) == 1 && friend.FriendOf(qf.Owner))))
+                foreach (Creature ally in deflect.Owner.Battle.AllCreatures.Where((Creature friend) => (friend.DistanceTo(deflect.Owner) == 1 && friend.FriendOf(deflect.Owner))))
                 {
-                    ally.AddQEffect(new QEffect()
+                    ally.AddQEffect(new QEffect(ExpirationCondition.Ephemeral)
                     {
                         YouAreTargetedByARoll = async delegate (QEffect deflection, CombatAction attack, CheckBreakdownResult breakdownresult)
                         {
@@ -1461,14 +1470,13 @@ public class AddSwash
                                     ally.AddQEffect(new QEffect()
                                     {
                                         ExpiresAt = ExpirationCondition.EphemeralAtEndOfImmediateAction,
-                                        BonusToDefenses = (QEffect effect, CombatAction? action, Defense defense) => (defense != 0) ? null : new Bonus(2, BonusType.Circumstance, "Guardian's Deflection")
+                                        BonusToDefenses = (QEffect effect, CombatAction? action, Defense defense) => (defense != Defense.AC) ? null : new Bonus(2, BonusType.Circumstance, "Guardian's Deflection")
                                     });
                                     return true;
                                 }
                             }
                             return false;
-                        },
-                        ExpiresAt = ExpirationCondition.Ephemeral
+                        }
                     });
                 }
             };
@@ -1485,7 +1493,7 @@ public class AddSwash
         ModManager.AddFeat(newFeat);
     }
 
-    public static Feat ImpalingFinisher = new TrueFeat(ModManager.RegisterFeatName("Impaling Finisher", "Impaling Finisher {icon:Action}"), 4, "You stab two foes with one thrust or bash them together with one punch.", "Make a bludgeoning or piercing melee Strike, then make an additional Strike against a creature directly behind them in a straight line.", new Trait[2] { SwashTrait, Finisher }, null)
+    public static Feat ImpalingFinisher = new TrueFeat(ModManager.RegisterFeatName("Impaling Finisher", "Impaling Finisher {icon:Action}"), 4, "You stab two foes with one thrust or bash them together with one punch.", "Make a bludgeoning or piercing melee Strike, then make an additional Strike against a creature directly behind them in a straight line.", new Trait[] { SwashTrait, Finisher }, null)
         .WithPermanentQEffect(delegate (QEffect qf)
         {
             qf.ProvideStrikeModifier = delegate (Item item)
@@ -1498,7 +1506,7 @@ public class AddSwash
                     int map = qf.Owner.Actions.AttackedThisManyTimesThisTurn;
                     return new CombatAction(qf.Owner, new SideBySideIllustration(item.Illustration, item.Illustration),
                             "Impaling Finisher",
-                            new Trait[] { Trait.AlwaysHits, Trait.IsHostile, Trait.Attack, Trait.AttackDoesNotIncreaseMultipleAttackPenalty, Finisher },
+                            new Trait[] { Trait.AlwaysHits, Trait.IsHostile, Trait.Attack, Trait.AttackDoesNotIncreaseMultipleAttackPenalty, Finisher, Trait.Basic },
                             "Make a bludgeoning or piercing attack against an adjacent enemy, then an enemy directly behind them in a straight line.",
                             Target.MultipleCreatureTargets(Target.Touch(), Target.Ranged(4))
                                 .WithAdditionalRestrictionsOnEachTarget((caster, previousCreature, newCreature) =>
@@ -1511,13 +1519,15 @@ public class AddSwash
                                         ));
                                     return previousCreature.All(acr => acr != newCreature && straightLine);
                                 })
+                                .WithMustBeDistinct()
                                 .WithMinimumTargets(2))
                         .WithActionCost(1)
                         .WithEffectOnEachTarget(async (spell, caster, target, result) =>
                         {
-                            CombatAction impale = caster.CreateStrike(item, map).WithActionCost(0);
-                            impale.Traits.Add(Finisher);
-                            impale.Traits.Add(Trait.ActionDoesNotRequireLegalTarget);
+                            CombatAction impale = caster.CreateStrike(item, map)
+                                .WithActionCost(0)
+                                .WithExtraTrait(Finisher)
+                                .WithExtraTrait(Trait.ActionDoesNotRequireLegalTarget);
                             impale.ChosenTargets = ChosenTargets.CreateSingleTarget(target);
                             await impale.AllExecute();
                         })
@@ -1525,34 +1535,6 @@ public class AddSwash
                         {
                             FinisherExhaustion(self);
                         });
-                    /*
-                    return new CombatAction(qf.Owner, new SideBySideIllustration(item.Illustration, item.Illustration), "Impaling Finisher", new Trait[] { Trait.Attack, Trait.AttackDoesNotIncreaseMultipleAttackPenalty, Finisher }, "Make a bludgeoning or piercing attack against an adjacent enemy, then an enemy directly behind them in a straight line.", Target.Reach(item))
-                    .WithActionCost(1)
-                    .WithEffectOnChosenTargets(async delegate (Creature swash, ChosenTargets target)
-                    {
-                        int xtranslate = swash.Occupies.X - target.ChosenCreature!.Occupies.X;
-                        int ytranslate = swash.Occupies.Y - target.ChosenCreature!.Occupies.Y;
-                        Tile? target2 = swash.Battle.Map.GetTile(target.ChosenCreature.Occupies.X - xtranslate, target.ChosenCreature.Occupies.Y - ytranslate);
-                        CombatAction impale = swash.CreateStrike(item, map).WithActionCost(0);
-                        impale.Traits.Add(Finisher);
-                        impale.ChosenTargets = ChosenTargets.CreateSingleTarget(target.ChosenCreature);
-                        if (target2 != null && target2.PrimaryOccupant != null && target2.PrimaryOccupant.EnemyOf(swash))
-                        {
-                            CombatAction impale2 = swash.CreateStrike(item, map).WithActionCost(0);
-                            impale2.Traits.Add(Finisher);
-                            impale2.Target = Target.Distance(4);
-                            impale2.ChosenTargets = ChosenTargets.CreateSingleTarget(target2.PrimaryOccupant);
-                            await impale.AllExecute();
-                            await impale2.AllExecute();
-                            FinisherExhaustion(swash);
-                        }
-                        else if (await swash.Battle.AskForConfirmation(swash, IllustrationName.ExclamationMark, "There is not an eligible creature in a straight line. Do you still wish to use Impaling Finisher?", "Use Impaling Finisher", "Cancel"))
-                        {
-                            await impale.AllExecute();
-                        }
-                        else swash.Actions.ActionsLeft++;
-                    });
-                    */
                 }
                 else return null;
             };
@@ -1605,13 +1587,13 @@ public class AddSwash
                                     await caster.StrideAsync("Choose a location to move to.", false, true, null, false, true, false);
                                     await caster.StrideAsync("Choose a location to move to.", false, true, null, false, true, false);
                                     await caster.PullCreature(target);
-                                    caster.RemoveAllQEffects((QEffect qf) => qf == noReactions);
+                                    noReactions.ExpiresAt = ExpirationCondition.Immediately;
                                     break;
                                 case CheckResult.Success:
                                     caster.AddQEffect(noReactions);
                                     await caster.StrideAsync("Choose a location to move to.", false, true, null, false, true, false);
                                     await caster.PullCreature(target);
-                                    caster.RemoveAllQEffects((QEffect qf) => qf == noReactions);
+                                    noReactions.ExpiresAt = ExpirationCondition.Immediately;
                                     break;
                                 case CheckResult.Failure:
                                     await caster.StrideAsync("Choose a location to move to.", false, true, null, false, true, false);
@@ -1638,7 +1620,7 @@ public class AddSwash
                 if ((qf.Owner.PrimaryItem != null) && qf.Owner.PrimaryItem.HasTrait(Trait.Drinkable))
                 {
                     Item potion = qf.Owner.PrimaryItem;
-                    CombatAction quaff = new CombatAction(qf.Owner, potion.Illustration, "Drink", new Trait[1] { Trait.Manipulate }, "Drink your " + potion.Name + ".\n\n" + potion.Description, Target.Self())
+                    CombatAction quaff = new CombatAction(qf.Owner, potion.Illustration, "Drink", new Trait[] { Trait.Manipulate }, "Drink your " + potion.Name + ".\n\n" + potion.Description, Target.Self())
                         .WithEffectOnEachTarget(async (spell, caster, target, result) =>
                         {
                             await potion.WhenYouDrink(spell, caster);
@@ -1653,7 +1635,7 @@ public class AddSwash
                 else if ((qf.Owner.SecondaryItem != null) && qf.Owner.SecondaryItem.HasTrait(Trait.Drinkable))
                 {
                     Item potion = qf.Owner.SecondaryItem;
-                    CombatAction quaff = new CombatAction(qf.Owner, potion.Illustration, "Drink", new Trait[1] { Trait.Manipulate }, "Drink your " + potion.Name + ".\n\n" + potion.Description, Target.Self())
+                    CombatAction quaff = new CombatAction(qf.Owner, potion.Illustration, "Drink", new Trait[] { Trait.Manipulate }, "Drink your " + potion.Name + ".\n\n" + potion.Description, Target.Self())
                         .WithEffectOnEachTarget(async (spell, caster, target, result) =>
                         {
                             await potion.WhenYouDrink(spell, caster);
@@ -1681,13 +1663,13 @@ public class AddSwash
                         .WithGoodness((tg, you, _) => you.AI.GainBonusToAC(you.HeldItems.Any((Item it) => it.HasTrait(AddWeapons.Parry)) ? 2 : 1))
                         .WithEffectOnEachTarget(async (spell, caster, target, result) =>
                         {
-                            QEffect parrybonus = new QEffect()
+                            QEffect parrybonus = new QEffect("Twin Parry", "You have a +" + (caster.HeldItems.Any((Item it) => it.HasTrait(AddWeapons.Parry)) ? "2" : "1") + " circumstance bonus to AC.", ExpirationCondition.ExpiresAtStartOfYourTurn, caster, IllustrationName.Swords)
                             {
-                                Name = "Twin Parry",
+                                //Name = "Twin Parry",
                                 Key = "TwinParry",
-                                Illustration = IllustrationName.Swords,
-                                Description = "You have a +" + (caster.HeldItems.Any((Item it) => it.HasTrait(AddWeapons.Parry)) ? "2" : "1") + " circumstance bonus to AC.",
-                                ExpiresAt = ExpirationCondition.ExpiresAtStartOfYourTurn,
+                                //Illustration = IllustrationName.Swords,
+                                //Description = "You have a +" + (caster.HeldItems.Any((Item it) => it.HasTrait(AddWeapons.Parry)) ? "2" : "1") + " circumstance bonus to AC.",
+                                //ExpiresAt = ExpirationCondition.ExpiresAtStartOfYourTurn,
                                 BonusToDefenses = delegate (QEffect thing, CombatAction? bonk, Defense defense)
                                 {
                                     if (defense == Defense.AC)
@@ -1736,17 +1718,7 @@ public class AddSwash
 
                 if (action.ActionId == ActionId.Grapple || action.ActionId == ActionId.Shove || action.ActionId == ActionId.Trip)
                 {
-                    if (effect.Owner.Actions.AttackedThisManyTimesThisTurn == 1)
-                    {
-                        return new Bonus(1, BonusType.Untyped, "MAP reduction (Agile Maneuvers)");
-                    }
-
-                    if (effect.Owner.Actions.AttackedThisManyTimesThisTurn >= 2)
-                    {
-                        return new Bonus(2, BonusType.Untyped, "MAP reduction (Agile Maneuvers)");
-                    }
-
-                    return null;
+                    return new Bonus(Math.Min(effect.Owner.Actions.AttackedThisManyTimesThisTurn, 2), BonusType.Untyped, "MAP reduction (Agile Maneuvers)");
                 }
 
                 return null;
@@ -1764,17 +1736,7 @@ public class AddSwash
 
                 if (action.HasTrait(Finisher))
                 {
-                    if (effect.Owner.Actions.AttackedThisManyTimesThisTurn == 1)
-                    {
-                        return new Bonus(1, BonusType.Untyped, "MAP reduction (Agile Maneuvers)");
-                    }
-
-                    if (effect.Owner.Actions.AttackedThisManyTimesThisTurn >= 2)
-                    {
-                        return new Bonus(2, BonusType.Untyped, "MAP reduction (Agile Maneuvers)");
-                    }
-
-                    return null;
+                    return new Bonus(Math.Min(effect.Owner.Actions.AttackedThisManyTimesThisTurn, 2), BonusType.Untyped, "MAP reduction (Agile Maneuvers)");
                 }
 
                 return null;
@@ -1798,33 +1760,20 @@ public class AddSwash
                 bool flag7 = item.WeaponProperties.DamageKind == DamageKind.Piercing || item.WeaponProperties.DamageKind == DamageKind.Slashing;
                 if (flag5 && flag6 && flag7)
                 {
-                    CombatAction combatAction = qf.Owner.CreateStrike(item, -1, strikeModifiers2);
-                    combatAction.Name = "Bleeding Finisher";
-                    combatAction.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.BloodVendetta);
-                    combatAction.Description = StrikeRules.CreateBasicStrikeDescription2(combatAction.StrikeModifiers, null, "The target takes " + GetPreciseStrikeDamage(qf.Owner).ToString() + "d6 persistent bleed damage.", null, null, "You lose panache, whether the attack succeeds or fails.");
-                    combatAction.ActionCost = 1;
-                    combatAction.StrikeModifiers.OnEachTarget = async delegate (Creature owner, Creature victim, CheckResult result)
-                    {
-                        if (result >= CheckResult.Success)
-                        {
-                            victim.AddQEffect(QEffect.PersistentDamage(GetPreciseStrikeDamage(owner).ToString() + "d6", DamageKind.Bleed));
-                        }
-                        FinisherExhaustion(qf.Owner);
-                    };
-                    combatAction.Traits.Add(Finisher);
-                    return combatAction;
+                    return CreateBleedingFinisher(qf.Owner, item, false, strikeModifiers2);
                 }
                 return null;
             };
         });
 
-        public static Feat DualFinisher = new TrueFeat(ModManager.RegisterFeatName("DualFinisher", "Dual Finisher {icon:Action}"), 8, "You split your attacks.", "Make two melee Strikes, one with each required weapon, each against a different foe. If the second Strike is made with a non-agile weapon, it takes a -2 penalty. Increase your multiple attack penalty only after attempting both Strikes.", new Trait[] { SwashTrait, Finisher }).WithPermanentQEffect(delegate (QEffect qf)
+        public static Feat DualFinisher = new TrueFeat(ModManager.RegisterFeatName("DualFinisher", "Dual Finisher {icon:Action}"), 8, "You split your attacks.", "Make two melee Strikes, one with each required weapon, each against a different foe. If the second Strike is made with a non-agile weapon, it takes a -2 penalty. Increase your multiple attack penalty only after attempting both Strikes.", new Trait[] { SwashTrait, Finisher })
+        .WithPermanentQEffect(delegate (QEffect qf)
         {
             qf.ProvideMainAction = delegate
             {
                 bool flag3 = qf.Owner.HasEffect(PanacheId);
                 bool flag4 = qf.Owner.PrimaryItem != null && qf.Owner.SecondaryItem != null;
-                return (flag3 && flag4) ? (qf.Owner.PrimaryItem.HasTrait(Trait.Weapon) && qf.Owner.PrimaryItem.HasTrait(Trait.Melee) && qf.Owner.SecondaryItem.HasTrait(Trait.Weapon) && qf.Owner.SecondaryItem.HasTrait(Trait.Melee) ? new ActionPossibility(new CombatAction(qf.Owner, new SideBySideIllustration(qf.Owner.PrimaryItem.Illustration, qf.Owner.SecondaryItem.Illustration), "Dual Finisher", new Trait[] { Trait.Attack, Trait.IsHostile, Trait.AlwaysHits, Finisher }, "Make two attacks, one with each of your two weapons, each against a different target. You lose panache and increase your multiple attack penalty after performing both attacks.", Target.MultipleCreatureTargets(Target.Reach(qf.Owner.PrimaryWeapon), Target.Reach(qf.Owner.SecondaryItem)).WithMustBeDistinct().WithMinimumTargets(2))
+                return (flag3 && flag4) ? (qf.Owner.PrimaryItem.HasTrait(Trait.Weapon) && qf.Owner.PrimaryItem.HasTrait(Trait.Melee) && qf.Owner.SecondaryItem.HasTrait(Trait.Weapon) && qf.Owner.SecondaryItem.HasTrait(Trait.Melee) ? new ActionPossibility(new CombatAction(qf.Owner, new SideBySideIllustration(qf.Owner.PrimaryItem.Illustration, qf.Owner.SecondaryItem.Illustration), "Dual Finisher", new Trait[] { Trait.Attack, Trait.IsHostile, Trait.AlwaysHits, Finisher, Trait.Basic }, "Make two attacks, one with each of your two weapons, each against a different target. You lose panache and increase your multiple attack penalty after performing both attacks.", Target.MultipleCreatureTargets(Target.Reach(qf.Owner.PrimaryWeapon), Target.Reach(qf.Owner.SecondaryItem)).WithMustBeDistinct().WithMinimumTargets(2))
                     .WithActionCost(1)
                     .WithEffectOnChosenTargets(async delegate (Creature swash, ChosenTargets target)
                 {
@@ -1835,11 +1784,12 @@ public class AddSwash
                     int map = qf.Owner.Actions.AttackedThisManyTimesThisTurn;
                     if (qf.Owner.HeldItems.Count >= 1)
                     {
-                        CombatAction strike = swash.CreateStrike(swash.PrimaryWeapon, map);
-                        strike.Traits.Add(Finisher);
+                        CombatAction strike = swash.CreateStrike(swash.PrimaryWeapon, map)
+                            .WithActionCost(0)
+                            .WithExtraTrait(Finisher);
+                        //strike.Traits.Add(Finisher);
                         strike.ChosenTargets = ChosenTargets.CreateSingleTarget(target.ChosenCreatures[0]);
                         await strike.AllExecute();
-                        //await qf.Owner.MakeStrike(target.ChosenCreatures[0], qf.Owner.PrimaryItem, map);
                     }
 
                     if (!qf.Owner.SecondaryItem.HasTrait(Trait.Agile))
@@ -1849,14 +1799,15 @@ public class AddSwash
 
                     if (qf.Owner.HeldItems.Count >= 2)
                     {
-                        CombatAction strike2 = swash.CreateStrike(swash.PrimaryWeapon, map);
-                        strike2.Traits.Add(Finisher);
+                        CombatAction strike2 = swash.CreateStrike(swash.PrimaryWeapon, map)
+                            .WithActionCost(0)
+                            .WithExtraTrait(Finisher);
+                        //strike2.Traits.Add(Finisher);
                         strike2.ChosenTargets = ChosenTargets.CreateSingleTarget(target.ChosenCreatures[1]);
                         await strike2.AllExecute();
-                        //await qf.Owner.MakeStrike(target.ChosenCreatures[1], qf.Owner.SecondaryItem, map);
                     }
 
-                    swash.RemoveAllQEffects((QEffect efct) => efct == penalty);
+                    penalty.ExpiresAt = ExpirationCondition.Immediately;
                     FinisherExhaustion(swash);
                 })) : null) : null;
             };
@@ -1935,11 +1886,8 @@ public class AddSwash
 
                 if (conditions >= 2)
                 {
-                    attacker.AddQEffect(new QEffect
+                    attacker.AddQEffect(new QEffect("Flamboyant Cruelty", "You have a +1 circumstance bonus to Tumble Through and to perform actions that would give you panache until the end of your turn.", ExpirationCondition.ExpiresAtEndOfYourTurn, attacker, new ModdedIllustration("PhoenixAssets/panache.PNG"))
                     {
-                        Name = "Flamboyant Cruelty",
-                        Illustration = new ModdedIllustration("PhoenixAssets/panache.PNG"),
-                        Description = "You have a +1 circumstance bonus to Tumble Through and to perform actions that would give you panache until the end of your turn.",
                         BonusToSkillChecks = delegate (Skill skill, CombatAction action, Creature target)
                         {
                             QEffect panacheGranter = qf.Owner.QEffects.First((QEffect fct) => fct.Key == "PanacheGranter");
@@ -1950,7 +1898,6 @@ public class AddSwash
                             }
                             else return null;
                         },
-                        ExpiresAt = ExpirationCondition.ExpiresAtEndOfYourTurn,
                         CountsAsABuff = true
                     });
                 }
@@ -1972,45 +1919,13 @@ public class AddSwash
                 bool flag2 = qf.Owner.HasEffect(PanacheId);
                 if (flag && flag2)
                 {
-                    CombatAction stun = qf.Owner.CreateStrike(item, -1, strikeModifiers);
-                    stun.Name = "Stunning Finisher";
-                    stun.Illustration = new SideBySideIllustration(item.Illustration, IllustrationName.Stunned);
-                    stun.Description = StrikeRules.CreateBasicStrikeDescription2(stun.StrikeModifiers, null, "The target makes a DC " + stun.Owner.ClassOrSpellDC() + " Fortitude save (this is an incapacitation effect). On a success, it can't take reactions for 1 turn. On a failure, it is stunned 1, and on a critical failure, it is stunned 3.", null, null, "You lose panache, whether the attack succeeds or fails.");
-                    stun.ActionCost = 1;
-                    stun.Traits.Add(Finisher);
-                    stun.StrikeModifiers.OnEachTarget = async delegate (Creature owner, Creature victim, CheckResult result)
-                    {
-                        FinisherExhaustion(owner);
-                        if (result >= CheckResult.Success)
-                        {
-                            CombatAction theactualstun = CombatAction.CreateSimple(owner, "Stunning Finisher", new Trait[] { Trait.Incapacitation });
-                            switch (CommonSpellEffects.RollSavingThrow(victim, theactualstun, Defense.Fortitude, owner.ClassOrSpellDC()))
-                            {
-                                case CheckResult.Success:
-                                    victim.AddQEffect(new QEffect(ExpirationCondition.ExpiresAtStartOfYourTurn)
-                                    {
-                                        Name = "Cannot take reactions",
-                                        Illustration = IllustrationName.ReactionUsedUp,
-                                        Description = "You cannot take reactions until the start of your turn.",
-                                        Id = QEffectId.CannotTakeReactions
-                                    });
-                                    break;
-                                case CheckResult.Failure:
-                                    victim.AddQEffect(QEffect.Stunned(1));
-                                    break;
-                                case CheckResult.CriticalFailure:
-                                    victim.AddQEffect(QEffect.Stunned(3));
-                                    break;
-                            }
-                        }
-                    };
-                    return stun;
+                    return CreateStunningFinisher(qf.Owner, item, false, strikeModifiers);
                 }
                 return null;
             };
         });
 
-        public static Feat VivaciousBravado = new TrueFeat(ModManager.RegisterFeatName("VivaciousBravado", "Vivacious Bravado {icon:Action}"), 8, "Your ego swells, granting you a temporary reprieve from your pain.", "{b}Requirements: {/b}You gained panache this turn. \n\nYou gain temporary Hit Points equal to your level plus your Charisma modifier.", new Trait[1] { SwashTrait }).WithPermanentQEffect(delegate (QEffect qf)
+        public static Feat VivaciousBravado = new TrueFeat(ModManager.RegisterFeatName("VivaciousBravado", "Vivacious Bravado {icon:Action}"), 8, "Your ego swells, granting you a temporary reprieve from your pain.", "{b}Requirements: {/b}You gained panache this turn. \n\nYou gain temporary Hit Points equal to your level plus your Charisma modifier.", new Trait[] { SwashTrait }).WithPermanentQEffect(delegate (QEffect qf)
         {
             qf.AfterYouAcquireEffect = async (qf, qf2) =>
             {
