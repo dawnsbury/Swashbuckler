@@ -19,7 +19,7 @@ public class AddWeapons
 {
     public static QEffectId ParryEffect = ModManager.TryParse<QEffectId>("Parry", out QEffectId parryId) ? parryId : ModManager.RegisterEnumMember<QEffectId>("Parry");
     public static Trait Parry = ModManager.TryParse<Trait>("Parry", out Trait parryTrait) ? parryTrait : ModManager.RegisterTrait("Parry", new TraitProperties("Parry", true, "If you are at least trained in this weapon, it can be used defensively to block attacks."));
-    public static Trait SpiralRapierTrait = ModManager.RegisterTrait("Spiral Rapier");
+    public static Trait SpiralRapierTrait = ModManager.RegisterTrait("SpiralRapier");
 
     public static QEffect Parrying(Item weapon)
     {
