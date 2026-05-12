@@ -30,14 +30,7 @@ public class AddWeapons
             Illustration = IllustrationName.Shield,
             Description = "You have a +1 circumstance bonus to AC.",
             ExpiresAt = ExpirationCondition.ExpiresAtStartOfYourTurn,
-            BonusToDefenses = delegate (QEffect parrying, CombatAction? bonk, Defense defense)
-            {
-                if (defense == Defense.AC)
-                {
-                    return new Bonus(1, BonusType.Circumstance, "Parry");
-                }
-                else return null;
-            },
+            BonusToDefenses = (parrying, bonk, defense) => defense == Defense.AC ? new Bonus(1, BonusType.Circumstance, "Parry") : null,
             StateCheck = (qf) =>
             {
                 if (!qf.Owner.HeldItems.Any((Item i) => i.HasTrait(Parry)))
@@ -51,38 +44,38 @@ public class AddWeapons
     
     public static ItemName MainGauche = ModManager.RegisterNewItemIntoTheShop("Main-Gauche", (itemName) =>
     {
-        return new Item(itemName, new ModdedIllustration("PhoenixAssets/MainGauche.png"), "main-gauche", 0, 0, new Trait[] { Trait.Agile, Trait.Disarm, Trait.Finesse, Trait.VersatileS, Parry, Trait.Martial, Trait.Knife })
+        return new Item(itemName, new ModdedIllustration("PhoenixAssets/MainGauche.png"), "main-gauche", 0, 0, [ Trait.Agile, Trait.Disarm, Trait.Finesse, Trait.VersatileS, Parry, Trait.Martial, Trait.Knife ])
             .WithWeaponProperties(new WeaponProperties("1d4", DamageKind.Piercing));
     });
 
     public static ItemName BoStaff = ModManager.RegisterNewItemIntoTheShop("Bo Staff", (itemName) =>
     {
-        return new Item(itemName, new ModdedIllustration("PhoenixAssets/BoStaff.png"), "bostaff", 0, 0, new Trait[] { Parry, Trait.Trip, Trait.Martial, Trait.Staff, Trait.TwoHanded, Trait.Reach, Trait.Club, Trait.MonkWeapon, Trait.NonMetallic })
+        return new Item(itemName, new ModdedIllustration("PhoenixAssets/BoStaff.png"), "bostaff", 0, 0, [ Parry, Trait.Trip, Trait.Martial, Trait.Staff, Trait.TwoHanded, Trait.Reach, Trait.Club, Trait.MonkWeapon, Trait.NonMetallic ])
             .WithWeaponProperties(new WeaponProperties("1d8", DamageKind.Bludgeoning));
     });
 
     public static ItemName Scizore = ModManager.RegisterNewItemIntoTheShop("Scizore", (itemName) =>
     {
-        return new Item(itemName, new ModdedIllustration("PhoenixAssets/Scizore.png"), "scizore", 0, 1, new Trait[] { Parry, Trait.Disarm, Trait.Martial, Trait.Knife })
+        return new Item(itemName, new ModdedIllustration("PhoenixAssets/Scizore.png"), "scizore", 0, 1, [ Parry, Trait.Disarm, Trait.Martial, Trait.Knife ])
             .WithWeaponProperties(new WeaponProperties("1d6", DamageKind.Slashing));
     });
 
     public static ItemName SpiralRapier = ModManager.RegisterNewItemIntoTheShop("SpiralRapier", (itemName) =>
     {
-        return new Item(itemName, new ModdedIllustration("PhoenixAssets/SpiralRapier.png"), "spiral rapier", 0, 5, new Trait[] { Parry, Trait.Disarm, Trait.Finesse, Trait.Advanced, Trait.Sword })
+        return new Item(itemName, new ModdedIllustration("PhoenixAssets/SpiralRapier.png"), "spiral rapier", 0, 5, [ Parry, Trait.Disarm, Trait.Finesse, Trait.Advanced, Trait.Sword ])
             .WithMainTrait(SpiralRapierTrait)
             .WithWeaponProperties(new WeaponProperties("1d6", DamageKind.Piercing));
     });
     
     public static ItemName DuelingCape = ModManager.RegisterNewItemIntoTheShop("DuelingCape", (itemName) =>
     {
-        return new Item(itemName, new ModdedIllustration("PhoenixAssets/DuelingCape.png"), "dueling cape", 0, 0, new Trait[] { })
+        return new Item(itemName, new ModdedIllustration("PhoenixAssets/DuelingCape.png"), "dueling cape", 0, 0, [])
         {
             ProvidesItemAction = delegate (Creature you, Item cape2)
             {
-                if (!you.QEffects.Any((QEffect qf) => qf.Name == "Raised Cape"))
+                if (!you.QEffects.Any((qf) => qf.Name == "Raised Cape"))
                 {
-                    return new ActionPossibility(new CombatAction(you, cape2.Illustration, "Brandish Cape", new Trait[] { Trait.Interact }, "Hold the dueling cape defensively, giving yourself a +1 circumstance bonus to AC and Deception checks to Feint until the start of your next turn.",
+                    return new ActionPossibility(new CombatAction(you, cape2.Illustration, "Brandish Cape", [ Trait.Interact ], "Hold the dueling cape defensively, giving yourself a +1 circumstance bonus to AC and Deception checks to Feint until the start of your next turn.",
                             Target.Self())
                         .WithActionCost(1)
                         .WithGoodness((tg, self, _) => self.AI.GainBonusToAC(1))
@@ -98,7 +91,7 @@ public class AddWeapons
                                         qf2.ExpiresAt = ExpirationCondition.Immediately;
                                     }
                                 },
-                                BonusToDefenses = delegate (QEffect qf, CombatAction action, Defense defense)
+                                BonusToDefenses = (qf, action, defense) =>
                                 {
                                     if (defense == Defense.AC)
                                     {
@@ -106,7 +99,7 @@ public class AddWeapons
                                     }
                                     else return null;
                                 },
-                                BonusToSkillChecks = delegate (Skill skill, CombatAction action, Creature target)
+                                BonusToSkillChecks = (skill, action, target) =>
                                 {
                                     if (action.ActionId == ActionId.Feint && skill == Skill.Deception)
                                     {
@@ -140,12 +133,12 @@ public class AddWeapons
                         {
                             creature.AddQEffect(new QEffect(ExpirationCondition.Ephemeral)
                             {
-                                ProvideActionIntoPossibilitySection = delegate (QEffect effect, PossibilitySection section)
+                                ProvideActionIntoPossibilitySection = (effect, section) =>
                                 {
                                     if (section.PossibilitySectionId == PossibilitySectionId.ItemActions)
                                     {
                                         bool parryIdExists = ModManager.TryParse<ActionId>("Parry", out ActionId parryId);
-                                        ActionPossibility parry = new ActionPossibility(new CombatAction(effect.Owner, new SideBySideIllustration(IllustrationName.Shield, i.Illustration), "Parry", new Trait[] { }, "You raise your weapon to parry oncoming attacks, granting yourself a +1 circumstance bonus to AC until the start of your next turn.", Target.Self())
+                                        ActionPossibility parry = new ActionPossibility(new CombatAction(effect.Owner, new SideBySideIllustration(IllustrationName.Shield, i.Illustration), "Parry", [], "You raise your weapon to parry oncoming attacks, granting yourself a +1 circumstance bonus to AC until the start of your next turn.", Target.Self())
                                             .WithSoundEffect(SfxName.RaiseShield)
                                             .WithActionCost(1)
                                             .WithActionId(parryId)
