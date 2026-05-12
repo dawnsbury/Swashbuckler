@@ -57,11 +57,12 @@ public class AddMulticlassSwash
             swash.AddQEffect(AddSwash.PanacheGranter());
         });
 
-    public static Feat FinishingPrecision = new TrueFeat(ModManager.RegisterFeatName("FinishingPrecision", "Finishing Precision"), 4, "You've learned how to land daring blows when you have panache.", "You gain the precise strike class feature, but you only deal 1 additional damage on a hit and 1d6 additional damage on a finisher. This damage doesn't increase as you gain levels. In addition, you gain the Basic Finisher action.", Array.Empty<Trait>(), null)
+    public static Feat FinishingPrecision = new TrueFeat(ModManager.RegisterFeatName("FinishingPrecision", "Finishing Precision"), 4, 
+            "You've learned how to land daring blows when you have panache.", "You gain the precise strike class feature, but you only deal 1 additional damage on a hit and 1d6 additional damage on a finisher. This damage doesn't increase as you gain levels. In addition, you gain the Basic Finisher action.", [])
         .WithAvailableAsArchetypeFeat(AddSwash.SwashTrait)
         .WithRulesBlockForCombatAction(delegate (Creature swash)
         {
-            CombatAction exampleFinisher = CombatAction.CreateSimple(swash, "Basic Finisher", new Trait[] { AddSwash.Finisher }).WithActionCost(1);
+            CombatAction exampleFinisher = CombatAction.CreateSimple(swash, "Basic Finisher", [ AddSwash.Finisher ]).WithActionCost(1);
             exampleFinisher.Description = "You make a graceful, deadly attack. Make a Strike; if you hit and your weapon qualifies for precise strike, you deal the full 1d6 damage from precise strike.";
             return exampleFinisher;
         })
@@ -89,24 +90,26 @@ public class AddMulticlassSwash
         });
 
     public static Feat SwashbucklersRiposte = new TrueFeat(ModManager.RegisterFeatName("SwashbucklersRiposte", "Swashbuckler's Riposte"), 6, "You've learned to riposte against ill-conceived attacks.", "You gain the Opportune Riposte reaction.", Array.Empty<Trait>()).WithAvailableAsArchetypeFeat(AddSwash.SwashTrait)
-        .WithOnSheet(delegate (CalculatedCharacterSheetValues sheet)
+        .WithOnSheet(sheet =>
         {
             sheet.AddFeat(AddSwash.OpportuneRiposte!, null);
         });
 
-    public static Feat SwashbucklersSpeed = new TrueFeat(ModManager.RegisterFeatName("SwashbucklersSpeed", "Swashbuckler's Speed"), 8, "You move faster, with or without panache.", "Increase the status bonus to your Speeds when you have panache to a +10-foot status bonus; you also gain a +5-foot status bonus to your Speeds when you don't have panache.", Array.Empty<Trait>()).WithAvailableAsArchetypeFeat(AddSwash.SwashTrait)
+    public static Feat SwashbucklersSpeed = new TrueFeat(ModManager.RegisterFeatName("SwashbucklersSpeed", "Swashbuckler's Speed"), 8, "You move faster, with or without panache.", 
+            "Increase the status bonus to your Speeds when you have panache to a +10-foot status bonus; you also gain a +5-foot status bonus to your Speeds when you don't have panache.", [])
+        .WithAvailableAsArchetypeFeat(AddSwash.SwashTrait)
         .WithPermanentQEffect(delegate (QEffect qf)
         {
-            qf.BonusToAllSpeeds = delegate (QEffect qf2)
+            qf.BonusToAllSpeeds = qf2 =>
             {
                 return new Bonus(1, BonusType.Status, "Swashbuckler's Speed");
             };
-            qf.YouAcquireQEffect = delegate (QEffect qfThis, QEffect qfGet)
+            qf.YouAcquireQEffect = (qfThis, qfGet) =>
             {
                 if (qfGet.Id == AddSwash.PanacheId)
                 {
                     QEffect qfNew = qfGet;
-                    qfNew.BonusToAllSpeeds = delegate (QEffect qf)
+                    qfNew.BonusToAllSpeeds = qf3 =>
                     {
                         return new Bonus(2, BonusType.Status, "Panache");
                     };
@@ -126,5 +129,6 @@ public class AddMulticlassSwash
         ModManager.AddFeat(FinishingPrecision);
         ModManager.AddFeat(SwashbucklersRiposte);
         ModManager.AddFeat(SwashbucklersSpeed);
+        ArchetypeFeats.DuplicateFeatAsArchetypeFeat(FeatName.Evasiveness, AddSwash.SwashTrait, 12);
     }
 }
