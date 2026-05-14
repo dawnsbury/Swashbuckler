@@ -91,22 +91,8 @@ public class AddWeapons
                                         qf2.ExpiresAt = ExpirationCondition.Immediately;
                                     }
                                 },
-                                BonusToDefenses = (qf, action, defense) =>
-                                {
-                                    if (defense == Defense.AC)
-                                    {
-                                        return new Bonus(1, BonusType.Circumstance, "raised dueling cape");
-                                    }
-                                    else return null;
-                                },
-                                BonusToSkillChecks = (skill, action, target) =>
-                                {
-                                    if (action.ActionId == ActionId.Feint && skill == Skill.Deception)
-                                    {
-                                        return new Bonus(1, BonusType.Circumstance, "raised dueling cape");
-                                    }
-                                    else return null;
-                                },
+                                BonusToDefenses = (qf, action, defense) => defense == Defense.AC ? new Bonus(1, BonusType.Circumstance, "raised dueling cape") : null,
+                                BonusToSkillChecks = (skill, action, target) => (action.ActionId == ActionId.Feint && skill == Skill.Deception) ? new Bonus(1, BonusType.Circumstance, "raised dueling cape") : null,
                                 CountsAsABuff = true
                             });
                         }));

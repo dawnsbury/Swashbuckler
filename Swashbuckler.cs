@@ -52,10 +52,7 @@ public class AddSwash
         {
             Id = PanacheId,
             Key = "Panache",
-            BonusToAllSpeeds = (qfpanache) =>
-            {
-                return new Bonus(1, BonusType.Status, "Panache");
-            },
+            BonusToAllSpeeds = (qfpanache) => new Bonus(1, BonusType.Status, "Panache"),
             BonusToSkillChecks = (skill, action, creature) =>
             {
                 //NOTE: In tabletop, the bonus from panache is applied only to checks that would grant panache. The current implementation applies it to all skills of the style's type.
@@ -110,14 +107,8 @@ public class AddSwash
             Id = FascinatedId,
             Description = "You have a -2 to Perception and skill checks, and can only use Concentrate actions if they target " + source.Name + ". Ends early if you or an ally are targeted by a hostile action.",
             Illustration = IllustrationName.RoaringApplause,
-            BonusToPerception = (fct) =>
-            {
-                return new Bonus(-2, BonusType.Status, "Fascinated");
-            },
-            BonusToSkillChecks = (skill, action, target) =>
-            {
-                return new Bonus(-2, BonusType.Status, "Fascinated");
-            },
+            BonusToPerception = (fct) => new Bonus(-2, BonusType.Status, "Fascinated"),
+            BonusToSkillChecks = (skill, action, target) => new Bonus(-2, BonusType.Status, "Fascinated"),
             YouAreTargeted = async (fct, action) =>
             {
                 if (action.IsHostileAction && action.ActionId != FascinatingPerformanceActionId)
@@ -150,7 +141,7 @@ public class AddSwash
     {
         swash.AddQEffect(new QEffect("Used Finisher", "You can't take any Attack actions.", ExpirationCondition.ExpiresAtEndOfYourTurn, swash, IllustrationName.Fatigued)
         {
-            PreventTakingAction = (action) => !(action.HasTrait(Trait.Attack)) ? null : "You used a finisher this turn."
+            PreventTakingAction = action => !action.HasTrait(Trait.Attack) ? null : "You used a finisher this turn."
         });
     }
     
@@ -526,7 +517,7 @@ public class AddSwash
                 {
                     AdjustStrikeAction = (qf, action) =>
                     {
-                        if (action.HasTrait(Trait.Strike) && ((Proficiency)qf.Owner.GetProficiency(action.Item) >= Proficiency.Master) && !action.HasTrait(Trait.Keen))
+                        if (action.HasTrait(Trait.Strike) && ((Proficiency)qf.Owner.GetProficiency(action.Item!) >= Proficiency.Master) && !action.HasTrait(Trait.Keen))
                         {
                             action.Traits.Add(Trait.Keen);
                         }
@@ -559,8 +550,9 @@ public class AddSwash
             }
         });
 
-    public static readonly Feat OpportuneRiposte = new Feat(ModManager.RegisterFeatName("Opportune Riposte", "Opportune Riposte {icon:Reaction}"), "You take advantage of an opening from your foe's fumbled attack.", "When an enemy critically fails its Strike against you, you can use your reaction to make a melee Strike against that enemy or make a Disarm attempt.", new List<Trait>(), null)
-        .WithPermanentQEffect("When an enemy critically fails a Strike against you, you may Strike or Disarm it using a reaction.", delegate (QEffect qf)
+    public static readonly Feat OpportuneRiposte = new Feat(ModManager.RegisterFeatName("Opportune Riposte", "Opportune Riposte {icon:Reaction}"), 
+            "You take advantage of an opening from your foe's fumbled attack.", "When an enemy critically fails its Strike against you, you can use your reaction to make a melee Strike against that enemy or make a Disarm attempt.", new List<Trait>(), null)
+        .WithPermanentQEffect("When an enemy critically fails a Strike against you, you may Strike or Disarm it using a reaction.", qf =>
         {
             qf.AfterYouAreTargeted = async (qf, action) =>
             {
@@ -598,7 +590,7 @@ public class AddSwash
                 {
                     if (possibleDisarms.Any() && possibleStrikes.Any())
                     {
-                        switch(await qf.Owner.Battle.AskToUseReaction(qf.Owner, action.Owner.Name + " has critically failed a Strike against you! What woud you like to do?", new ModdedIllustration("PhoenixAssets/panache.png"), [ OpportuneRiposteTrait ], "Disarm", "Strike"))
+                        switch(await qf.Owner.Battle.AskToUseReaction(qf.Owner, action.Owner.Name + " critically failed a Strike against you. Spend your {icon:Reaction} to respond using Opportune Riposte?", new ModdedIllustration("PhoenixAssets/panache.png"), [ OpportuneRiposteTrait ], "Disarm", "Strike"))
                         {
                             case 0:
                                 CombatAction disarm = possibleDisarms[0];
@@ -615,7 +607,7 @@ public class AddSwash
                                 break;
                         }
                     }
-                    else await CommonCombatActions.OfferAndMakeReactiveStrike(qf.Owner, action.Owner, action.Owner + " has critically failed a Strike against you. Would you like to use Opportune Riposte to make a Strike?", "opportune riposte", 1, [ Trait.ReactiveAttack, OpportuneRiposteTrait ]);
+                    else await CommonCombatActions.OfferAndMakeReactiveStrike(qf.Owner, action.Owner, action.Owner + " critically failed a Strike against you. Spend your {icon:Reaction} reaction to make a Strike using Opportune Riposte?", "opportune riposte", 1, [ Trait.ReactiveAttack, OpportuneRiposteTrait ]);
                 }
             };
         });
@@ -668,30 +660,27 @@ public class AddSwash
         return preciseStrike;
     }
   
-    public static readonly Feat VivaciousSpeed = new Feat(ModManager.RegisterFeatName("Vivacious Speed"), "When you've made an impression, you move even faster than normal, darting about the battlefield with incredible speed.", "The status bonus to your Speed from panache increases to 10 feet. When you don't have panache, you still get half this status bonus to your Speeds, rounded down to the nearest 5-foot increment. This bonus increases by 5 feet at 7th, 11th, 15th, and 19th level.", new List<Trait>(), null)
-        .WithPermanentQEffect("You move quickly, even when you don't have panache.", delegate (QEffect qf)
+    public static readonly Feat VivaciousSpeed = new Feat(ModManager.RegisterFeatName("Vivacious Speed"), 
+            "When you've made an impression, you move even faster than normal, darting about the battlefield with incredible speed.", "The status bonus to your Speed from panache increases to 10 feet. When you don't have panache, you still get half this status bonus to your Speeds, rounded down to the nearest 5-foot increment. This bonus increases by 5 feet at 7th, 11th, 15th, and 19th level.", new List<Trait>(), null)
+        .WithPermanentQEffect("You move quickly, even when you don't have panache.", qf =>
         {
-            qf.BonusToAllSpeeds = (qf) => (!qf.Owner.HasEffect(PanacheId)) ? new Bonus((((qf.Owner.Level - 3) / 4) + 2)/2, BonusType.Status, "Vivacious Speed") : null;
+            qf.BonusToAllSpeeds = qfSpeed => new Bonus((((qfSpeed.Owner.Level - 3) / 4) + 2)/2, BonusType.Status, "Vivacious Speed");
             qf.YouAcquireQEffect = (qfThis, qfGet) =>
             {
                 if (qfGet.Id == PanacheId)
                 {
                     QEffect qfNew = qfGet;
                     int i = ((qf.Owner.Level - 3) / 4) + 2;
-                    qfNew.BonusToAllSpeeds = delegate (QEffect qf)
-                    {
-                        return new Bonus(i, BonusType.Status, "Panache");
-                    };
-                    SwashbucklerStyle style = (SwashbucklerStyle)qfThis.Owner.PersistentCharacterSheet.Calculated.AllFeats.Find(feat => feat.HasTrait(SwashStyle));
-                    Skill styleSkill = style.Skill;
-                    qfNew.Description = "You have a +" + (i * 5).ToString() + "-foot status bonus to your Speed and a +1 circumstance bonus to Acrobatics and " + styleSkill.HumanizeTitleCase2() + " skill checks.\n\nYou can use finishers by spending panache.";
+                    qfNew.BonusToAllSpeeds = qf => new Bonus(i, BonusType.Status, "Panache");
+                    qfNew.Description = qfNew.Description!.Replace("+5-foot", $"+{(i*5)}-foot");
                     return qfNew;
                 }
                 else return qfGet;
             };
         });
     
-    public static Feat FascinatingPerformance = new TrueFeat(ModManager.RegisterFeatName("FascinatingPerformance", "Fascinating Performance"), 1, "You can Perform to fascinate observers.", "As an action, make a Performance check against an opponent's Will DC. If you critically succeed, the target is fascinated by you (they have a -2 status penalty to skill checks and can't take concentrate actions against anyone other than you) for 1 round. The target is then immune for the rest of the encounter.\n\nIf you are an expert in Performance, you can choose up to 4 targets. If you are a master in Performance, you can choose up to 10 targets.", new Trait[] { Trait.General, Trait.Skill }, null)
+    public static Feat FascinatingPerformance = new TrueFeat(ModManager.RegisterFeatName("FascinatingPerformance", "Fascinating Performance"), 1, 
+            "You can Perform to fascinate observers.", "As an action, make a Performance check against an opponent's Will DC. If you critically succeed, the target is fascinated by you (they have a -2 status penalty to skill checks and can't take concentrate actions against anyone other than you) for 1 round. The target is then immune for the rest of the encounter.\n\nIf you are an expert in Performance, you can choose up to 4 targets. If you are a master in Performance, you can choose up to 10 targets.", [ Trait.General, Trait.Skill ])
         .WithActionCost(1)
         .WithPrerequisite(sheet => sheet.GetProficiency(Trait.Performance) >= Proficiency.Trained, "You must be trained in Performance.")
         .WithPermanentQEffect(null, (qf) =>
@@ -700,7 +689,7 @@ public class AddSwash
             {
                 if (section.PossibilitySectionId == PossibilitySectionId.SkillActions)
                 {
-                    return new ActionPossibility(new CombatAction(effect.Owner, IllustrationName.RoaringApplause, "Fascinating Performance", new Trait[] { Trait.Concentrate, Trait.Manipulate, Trait.Incapacitation },
+                    return new ActionPossibility(new CombatAction(effect.Owner, IllustrationName.RoaringApplause, "Fascinating Performance", [ Trait.Concentrate, Trait.Manipulate, Trait.Incapacitation ],
                         "Make a Performance check (" + S.SkillBonus(qf.Owner, Skill.Performance) + ") against " + 
                             (effect.Owner.PersistentCharacterSheet.Calculated.GetProficiency(Trait.Performance) >= Proficiency.Master ? "up to 10" 
                             : (effect.Owner.PersistentCharacterSheet.Calculated.GetProficiency(Trait.Performance) == Proficiency.Expert) ? "up to 4"
@@ -745,15 +734,16 @@ public class AddSwash
         })
         .WithCustomName("Give Panache");
 
-    public static Feat DisarmingFlair = new TrueFeat(ModManager.RegisterFeatName("Disarming Flair", "Disarming Flair"), 1, "It's harder for foes to regain their grip when you knock their weapon partially out of their hands.", "When you succeed at an Athletics check to Disarm, the circumstance bonus and penalty from Disarm last until the end of your next turn, instead of until the beginning of the target's next turn. The target can use an Interact action to adjust their grip and remove this effect. If your swashbuckler style is gymnast and you succeed at your Athletics check to Disarm a foe, you gain panache.", new Trait[] { SwashTrait }, null)
+    public static Feat DisarmingFlair = new TrueFeat(ModManager.RegisterFeatName("Disarming Flair", "Disarming Flair"), 1, 
+            "It's harder for foes to regain their grip when you knock their weapon partially out of their hands.", "When you succeed at an Athletics check to Disarm, the circumstance bonus and penalty from Disarm last until the end of your next turn, instead of until the beginning of the target's next turn. The target can use an Interact action to adjust their grip and remove this effect. If your swashbuckler style is gymnast and you succeed at your Athletics check to Disarm a foe, you gain panache.", [ SwashTrait ])
         .WithPermanentQEffect("Your Disarm effects last longer.", (qf) =>
         {
             qf.CharacterSheetBecomesCreature = (sheet, creature) =>
             {
-                QEffect panacheGranter = creature.QEffects.First((QEffect fct) => fct.Key == "PanacheGranter");
-                List<ActionId> list = (List<ActionId>)panacheGranter.Tag;
                 if (creature.HasFeat(GymnastStyle))
                 {
+                    QEffect panacheGranter = creature.QEffects.First((QEffect fct) => fct.Key == "PanacheGranter");
+                    List<ActionId> list = (List<ActionId>)panacheGranter.Tag;
                     list.Add(ActionId.Disarm);
                     panacheGranter.Description += ", Disarm";
                 }
@@ -777,7 +767,7 @@ public class AddSwash
                 }
             };
         });
-
+    
     public static void AddSwashDuelingParry()
     {
         TrueFeat trueFeat = AllFeats.GetFeatByFeatName(FeatName.DuelingParry) as TrueFeat;
@@ -790,9 +780,10 @@ public class AddSwash
     }
 
     //Grants thrown versions of Confident Finisher, Basic Finisher, Unbalancing Finisher, Bleeding Finisher, and Stunning Finisher, as long as your weapons meet the criteria. It's usually down to GM judgement which finishers Flying Blade applies to, so I choose to allow it for any finisher without a complicated targeting scheme.
-    public static Feat FlyingBlade = new TrueFeat(ModManager.RegisterFeatName("FlyingBlade", "Flying Blade"), 1, "You've learned to apply your flashy techniques to thrown weapons just as easily as melee.", "When you have panache, you apply your additional damage from Precise Strike on ranged Strikes you make with a thrown weapon within its first range increment. The thrown weapon must be an agile or finesse weapon.\n\nAdditionally, if you have the following finishers available to you, you can perform them with thrown weapons (within the weapon's first range increment): Confident Finisher, Basic Finisher, Unbalancing Finisher, Bleeding Finisher, Stunning Finisher.", new Trait[] { SwashTrait }, null)
+    public static Feat FlyingBlade = new TrueFeat(ModManager.RegisterFeatName("FlyingBlade", "Flying Blade"), 1, 
+            "You've learned to apply your flashy techniques to thrown weapons just as easily as melee.", "When you have panache, you apply your additional damage from Precise Strike on ranged Strikes you make with a thrown weapon within its first range increment. The thrown weapon must be an agile or finesse weapon.\n\nAdditionally, if you have the following finishers available to you, you can perform them with thrown weapons (within the weapon's first range increment): Confident Finisher, Basic Finisher, Unbalancing Finisher, Bleeding Finisher, Stunning Finisher.", [ SwashTrait ])
         .WithPrerequisite(sheet => sheet.AllFeats.Contains(PreciseStrike), "You must have the Precise Strike feature.")
-        .WithPermanentQEffect(null, (qf) =>
+        .WithPermanentQEffect("You can use Precise Strike and finishers within the first range increment of thrown weapons.", qf =>
         {
             if (qf.Owner.HasFeat(Confident.FeatName))
             {
@@ -894,7 +885,7 @@ public class AddSwash
                         {
                             CombatAction stunThrown = CreateStunningFinisher(qf.Owner, item, true, strikeModifiers5);
                             stunThrown.Name += " (Thrown)";
-                            stunThrown.Target = Target.Ranged(item.WeaponProperties.RangeIncrement);
+                            stunThrown.Target = Target.Ranged(item.WeaponProperties!.RangeIncrement);
                             return stunThrown;
                         }
                         return null;
@@ -929,7 +920,8 @@ public class AddSwash
             };
         });
 
-    public static Feat GoadingFeint = new TrueFeat(ModManager.RegisterFeatName("Goading Feint"), 1, "When you trick a foe, you can goad them into overextending their next attack.", "On a Feint, you can use the following success and critical success effects instead of any other effects you would gain when you Feint; if you do, normal abilities that apply on a Feint no longer apply.\n\n{b}Critical Success:{/b} The target takes a -2 circumstance penalty to all its attack rolls against you before the end of its next turn.\n{b}Success:{/b} The target takes a -2 circumstance penalty to the next attack roll it makes against you before the end of its next turn.", [ SwashTrait ])
+    public static Feat GoadingFeint = new TrueFeat(ModManager.RegisterFeatName("Goading Feint"), 1, 
+            "When you trick a foe, you can goad them into overextending their next attack.", "On a Feint, you can use the following success and critical success effects instead of any other effects you would gain when you Feint; if you do, normal abilities that apply on a Feint no longer apply.\n\n{b}Critical Success:{/b} The target takes a -2 circumstance penalty to all its attack rolls against you before the end of its next turn.\n{b}Success:{/b} The target takes a -2 circumstance penalty to the next attack roll it makes against you before the end of its next turn.", [ SwashTrait ])
         .WithPrerequisite(values => values.GetProficiency(Trait.Deception) >= Proficiency.Trained, "You must be trained in Deception")
         .WithPermanentQEffect("When you Feint a creature, you can give them a penalty to AC instead of the normal effects.", qf =>
         {
@@ -944,16 +936,9 @@ public class AddSwash
 
                     if (flag2 && action.CheckResult >= CheckResult.Success)
                     {
-                        QEffect goaded = new QEffect("Goaded", "You have a -2 circumstance penalty to your next attack roll against " + qfaction.Owner.Name + " before the end of your turn.", ExpirationCondition.ExpiresAtEndOfYourTurn, qfaction.Owner, IllustrationName.Confused)
+                        QEffect goaded = new QEffect("Goaded", "You have a -2 circumstance penalty to your next attack roll against " + qfaction.Owner.Name + ".", ExpirationCondition.ExpiresAtEndOfYourTurn, qfaction.Owner, IllustrationName.Confused)
                         {
-                            BonusToAttackRolls = (bonus, bonk, someone) =>
-                            {
-                                if (someone == qfaction.Owner)
-                                {
-                                    return new Bonus(-2, BonusType.Circumstance, "Goaded");
-                                }
-                                else return null;
-                            },
+                            BonusToAttackRolls = (bonus, bonk, someone) => someone == qfaction.Owner ? new Bonus(-2, BonusType.Circumstance, "Goading Feint") : null,
                             AfterYouMakeAttackRoll = (goaded, result) =>
                             {
                                 goaded.ExpiresAt = ExpirationCondition.Immediately;
@@ -962,7 +947,7 @@ public class AddSwash
                         };
                         if (result == CheckResult.Success)
                         {
-                            goaded.Description = "You have a -2 circumstance penalty on all attack rolls against " + qfaction.Owner.Name + " before the end of your next turn.";
+                            goaded.Description = "You have a -2 circumstance penalty on all attack rolls against " + qfaction.Owner.Name + ".";
                             goaded.AfterYouMakeAttackRoll = null;
                         }
                         target.AddQEffect(goaded);
@@ -972,7 +957,8 @@ public class AddSwash
             };
         });
 
-    public static Feat OneForAll = new TrueFeat(ModManager.RegisterFeatName("One For All", "One For All"), 1, "With precisely the right words of encouragement, you bolster an ally's efforts.", "Using one action, designate an ally within 30 feet. The next time that ally makes an attack roll or skill check, you may use your reaction to attempt a DC 20 Diplomacy check with the following effects:\n{b}Critical Success:{/b} You grant the ally a +2 circumstance bonus to their attack roll or skill check. If your swashbuckler style is Wit, you gain panache.\n{b}Success:{/b} You grant the ally a +1 circumstance bonus to their attack roll or skill check. If your swashbuckler style is Wit, you gain panache.\n{b}Critical Failure:{/b} The ally takes a -1 circumstance penalty to their attack roll or skill check.", new Trait[] { Trait.Auditory, Trait.Concentrate, Trait.Emotion, Trait.Linguistic, Trait.Mental, SwashTrait })
+    public static Feat OneForAll = new TrueFeat(ModManager.RegisterFeatName("One For All", "One For All"), 1, 
+            "With precisely the right words of encouragement, you bolster an ally's efforts.", "Choose an ally within 30 feet. The next time that ally makes an attack roll or skill check, you may use your reaction to attempt a DC 20 Diplomacy check with the following effects:\n{b}Critical Success:{/b} You grant the ally a +2 circumstance bonus to their attack roll or skill check. If your swashbuckler style is Wit, you gain panache.\n{b}Success:{/b} You grant the ally a +1 circumstance bonus to their attack roll or skill check. If your swashbuckler style is Wit, you gain panache.\n{b}Critical Failure:{/b} The ally takes a -1 circumstance penalty to their attack roll or skill check.", [ Trait.Auditory, Trait.Concentrate, Trait.Emotion, Trait.Linguistic, Trait.Mental, SwashTrait ])
         .WithActionCost(1)
         .WithPrerequisite((values) => values.GetProficiency(Trait.Diplomacy) >= Proficiency.Trained, "You must be trained in Diplomacy.")
         .WithPermanentQEffect(null, (qf) =>
@@ -1012,35 +998,26 @@ public class AddSwash
                                             case CheckResult.CriticalSuccess:
                                                 target3.AddQEffect(new QEffect(ExpirationCondition.Ephemeral)
                                                 {
-                                                    BonusToAllChecksAndDCs = (thing) =>
-                                                    {
-                                                        return new Bonus(2, BonusType.Circumstance, "One For All");
-                                                    }
+                                                    BonusToAllChecksAndDCs = (thing) => new Bonus(2, BonusType.Circumstance, "One For All")
                                                 });
                                                 break;
                                             case CheckResult.Success:
                                                 target3.AddQEffect(new QEffect(ExpirationCondition.Ephemeral)
                                                 {
-                                                    BonusToAllChecksAndDCs = (thing) =>
-                                                    {
-                                                        return new Bonus(1, BonusType.Circumstance, "One For All");
-                                                    }
+                                                    BonusToAllChecksAndDCs = (thing) => new Bonus(1, BonusType.Circumstance, "One For All")
                                                 });
                                                 break;
                                             case CheckResult.CriticalFailure:
                                                 target3.AddQEffect(new QEffect(ExpirationCondition.Ephemeral)
                                                 {
-                                                    BonusToAllChecksAndDCs = (thing) =>
-                                                    {
-                                                        return new Bonus(-1, BonusType.Circumstance, "One For All");
-                                                    }
+                                                    BonusToAllChecksAndDCs = (thing) => new Bonus(-1, BonusType.Circumstance, "One For All")
                                                 });
                                                 break;
                                         }
                                         effect.ExpiresAt = ExpirationCondition.Immediately;
                                     });
                                 aid.ChosenTargets = ChosenTargets.CreateSingleTarget(target);
-                                if (await qf.Owner.Battle.AskToUseReaction(qf.Owner, "Spend your reaction to attempt a Diplomacy check to Aid " + target.Name + "'s check?"))
+                                if (await qf.Owner.Battle.AskToUseReaction(qf.Owner, "Spend your {icon:Reaction} reaction to attempt a Diplomacy check to Aid " + target.Name + "'s check?"))
                                 {
                                     await aid.AllExecute();
                                 }
@@ -1062,10 +1039,7 @@ public class AddSwash
             {
                 Skill skill = style.Skill;
                 qf.Description = "You roll " + skill.HumanizeTitleCase2() + " for initiative.";
-                qf.OfferAlternateSkillForInitiative = (fct) =>
-                {
-                    return skill;
-                };
+                qf.OfferAlternateSkillForInitiative = qf2 => skill;
             }
         });
 
@@ -1075,7 +1049,7 @@ public class AddSwash
         {
             qf.StartOfCombat = async (qfAfterYou) =>
             {
-                if (await qf.Owner.Battle.AskForConfirmation(qf.Owner, new ModdedIllustration("PhoenixAssets/panache.PNG"), "Would you like to move last in initiative and gain panache?", "Yes, move last", "No, roll initiative normally"))
+                if (await qf.Owner.Battle.AskForConfirmation(qf.Owner, new ModdedIllustration("PhoenixAssets/panache.PNG"), "Move last in initiative and gain panache?", "Yes, move last", "No, roll initiative normally"))
                 {
                     Creature target = qf.Owner.Battle.InitiativeOrder.Last();
                     int goal = target.Battle.InitiativeOrder.IndexOf(target);
@@ -1097,7 +1071,7 @@ public class AddSwash
                     QEffect antagonized = new QEffect("Antagonized", "This target cannot lower their Frightened value below 1 until taking a hostile action against " + qf.Owner.Name + ".", ExpirationCondition.Never, demoralize.Owner, IllustrationName.Rage)
                     {
                         Id = QEffectId.DirgeOfDoomFrightenedSustainer,
-                        EndOfYourTurn = async (fright, victim) =>
+                        EndOfYourTurnBeneficialEffect = async (fright, victim) =>
                         {
                             if (qf.Owner.DetectionStatus.Undetected)
                             {
@@ -1173,19 +1147,19 @@ public class AddSwash
                 }
             };
         });
-
+    
     public static Feat TumbleBehind = new TrueFeat(ModManager.RegisterFeatName("Tumble Behind", "Tumble Behind"), 2, 
             "Your tumbling catches enemies off-guard.", "Whenever you Tumble Through an enemy, the enemy you Tumbled through is flat-footed against the next attack you make until the end of your turn.\n\n{i}(The automatic pathfinding will normally chart a path that doesn't require a tumble through if possible. To tumble through a creature on purpose, use the step-by-step stride option in the Other actions menu.){/i}", [ SwashTrait ])
         .WithPermanentQEffect("Tumbling Through enemies makes them briefly flat-footed.", (qf) =>
         {
-            qf.AfterYouTakeAction = async (effect, action) =>
+            qf.AfterYouTakeActionAgainstTarget = async (effect, action, target, result) =>
             {
-                if (action.ActionId == ActionId.TumbleThrough && action.CheckResult >= CheckResult.Success && action.ChosenTargets.ChosenCreature != null)
+                if (action.ActionId == ActionId.TumbleThrough && result >= CheckResult.Success)
                 {
-                    action.ChosenTargets.ChosenCreature.AddQEffect(new QEffect("Tumbled Behind", "You're flat-footed to the next attack that " + qf.Owner.Name + " makes.", ExpirationCondition.ExpiresAtEndOfSourcesTurn, effect.Owner, IllustrationName.Flatfooted)
+                    target.AddQEffect(new QEffect("Tumbled Behind", "You're flat-footed to the next attack that " + qf.Owner.Name + " makes.", ExpirationCondition.ExpiresAtEndOfSourcesTurn, effect.Owner, IllustrationName.Flatfooted)
                     {
-                        IsFlatFootedTo = (all, everyone, everything) => everyone != null && everyone == action.Owner ? "Tumble Behind" : null,
-                        AfterYouAreTargeted = async (effect, strike) =>
+                        IsFlatFootedTo = (fct, attacker, attack) => attacker == action.Owner ? "Tumble Behind" : null,
+                        AfterYouAreTargeted = async (effect2, strike) =>
                         {
                             if (strike.HasTrait(Trait.Strike) && (strike.Owner == action.Owner))
                             {
@@ -1212,12 +1186,12 @@ public class AddSwash
                     if (result == CheckResult.CriticalSuccess)
                     {
                         dazzled.ExpiresAt = ExpirationCondition.ExpiresAtStartOfSourcesTurn;
-                        dazzled.ProvideContextualAction = delegate (QEffect effect)
+                        dazzled.ProvideContextualAction = effect =>
                         {
                             return new ActionPossibility(new CombatAction(effect.Owner, IllustrationName.RubEyes, "Rub Eyes", [ Trait.Interact, Trait.Manipulate ], "Rub your eyes to remove the dazzled condition.",
                                 Target.Self())
                                     .WithActionCost(1)
-                                    .WithGoodness((target, self, _) => self.AI.AlwaysIfSmartAndTakingCareOfSelf)
+                                    .WithGoodness((foe, self, _) => self.AI.AlwaysIfSmartAndTakingCareOfSelf)
                                     .WithEffectOnSelf(async (self) =>
                                     {
                                         dazzled.ExpiresAt = ExpirationCondition.Immediately;
@@ -1248,7 +1222,7 @@ public class AddSwash
                         {
                             if (qf.Owner.HasEffect(PanacheId) && qf.Owner.HasFreeHand && !defender.PersistentUsedUpResources.UsedUpActions.Contains("Dramatic Catch") && defender.HP > 0)
                             {
-                                if (await qf.Owner.Battle.AskToUseReaction(qf.Owner, defender.Name + " is about to take potentially lethal damage! Would you like to spend your panache to keep them standing at 1 Hit Point?"))
+                                if (await qf.Owner.Battle.AskToUseReaction(qf.Owner, defender.Name + " is about to take potentially lethal damage. Spend your {icon:Reaction} reaction and panache to keep them standing at 1 Hit Point?"))
                                 {
                                     defender.PersistentUsedUpResources.UsedUpActions.Add("Dramatic Catch");
                                     qf.Owner.RemoveAllQEffects((QEffect fct) => fct.Id == PanacheId);
@@ -1284,7 +1258,7 @@ public class AddSwash
                             if ((qf.Owner.HasOneWeaponAndFist && qf.Owner.PrimaryWeapon != null && qf.Owner.PrimaryWeapon.HasTrait(Trait.Melee)) && (attack.HasTrait(Trait.Attack) && !attack.HasTrait(Trait.AttackDoesNotTargetAC)) && qf.Owner.CanSee(attack.Owner) && breakdownresult.ThresholdToDowngrade <= 2 && (breakdownresult.CheckResult == CheckResult.Success || breakdownresult.CheckResult == CheckResult.CriticalSuccess))
                             {
                                 CheckResult result = breakdownresult.CheckResult;
-                                if (await qf.Owner.Battle.AskToUseReaction(qf.Owner, ally.Name + " is about to be hit by an attack. Would you like to use Guardian's Deflection to downgrade the " + result.HumanizeTitleCase2() + " to a " + result.WorsenByOneStep().HumanizeTitleCase2() + "?"))
+                                if (await qf.Owner.Battle.AskToUseReaction(qf.Owner, ally.Name + " is about to be hit by an attack. Use Guardian's Deflection to downgrade the " + result.HumanizeTitleCase2() + " to a " + result.WorsenByOneStep().HumanizeTitleCase2() + "?"))
                                 {
                                     ally.AddQEffect(new QEffect()
                                     {
@@ -1369,10 +1343,10 @@ public class AddSwash
         {
             qf.CharacterSheetBecomesCreature = (sheet, creature) =>
             {
-                QEffect panacheGranter = creature.QEffects.First((QEffect fct) => fct.Key == "PanacheGranter");
-                List<ActionId> list = (List<ActionId>)panacheGranter.Tag;
                 if (creature.HasFeat(BattledancerStyle))
                 {
+                    QEffect panacheGranter = creature.QEffects.First((QEffect fct) => fct.Key == "PanacheGranter");
+                    List<ActionId> list = (List<ActionId>)panacheGranter.Tag;
                     list.Add(LeadingDanceId);
                     panacheGranter.Description += ", Leading Dance" + LeadingDanceId.HumanizeTitleCase2();
                 }
@@ -1381,7 +1355,7 @@ public class AddSwash
             {
                 if (section.PossibilitySectionId == PossibilitySectionId.SkillActions)
                 {
-                    return new ActionPossibility(new CombatAction(effect.Owner, IllustrationName.WarpStep, "Leading Dance", new Trait[] { Trait.Move }, "Attempt a Performance check (" + S.SkillBonus(qf.Owner, Skill.Performance) + ") against an adjacent enemy's Will DC. If you have the Battledancer swashbuckler style and you succeed, you gain panache." + S.FourDegreesOfSuccess("Your foe is swept up in your dance. You move up to 10 feet, and the enemy follows you. Your movement doesn't trigger reactions (and the enemy's movement doesn't trigger reactions because it's forced movement).", "As critical success, but you both only move 5 feet.", "The foe doesn't follow your steps. You can move 5 feet if you choose, but this movement triggers reactions normally.", "You stumble, falling prone in your space."),
+                    return new ActionPossibility(new CombatAction(effect.Owner, IllustrationName.WarpStep, "Leading Dance", [ Trait.Move ], "Attempt a Performance check (" + S.SkillBonus(qf.Owner, Skill.Performance) + ") against an adjacent enemy's Will DC. If you have the Battledancer swashbuckler style and you succeed, you gain panache." + S.FourDegreesOfSuccess("Your foe is swept up in your dance. You move up to 10 feet, and the enemy follows you. Your movement doesn't trigger reactions (and the enemy's movement doesn't trigger reactions because it's forced movement).", "As critical success, but you both only move 5 feet.", "The foe doesn't follow your steps. You can move 5 feet if you choose, but this movement triggers reactions normally.", "You stumble, falling prone in your space."),
                             Target.Touch())
                         .WithActionCost(1)
                         .WithActionId(LeadingDanceId)
@@ -1397,8 +1371,7 @@ public class AddSwash
                             {
                                 case CheckResult.CriticalSuccess:
                                     caster.AddQEffect(noReactions);
-                                    await caster.StrideAsync("Choose a location to move to.", false, true, null, false, true);
-                                    await caster.StrideAsync("Choose a location to move to.", false, true, null, false, true);
+                                    await caster.StrideOrStepAdvancedAsync("Choose a location to move to:", maximumSpeed: 2, allowPass: true);
                                     await caster.PullCreature(target);
                                     noReactions.ExpiresAt = ExpirationCondition.Immediately;
                                     break;
@@ -1429,50 +1402,51 @@ public class AddSwash
             {
                 BonusToInitiative = qf => new Bonus(2, BonusType.Circumstance, "Swaggering Initiative")
             });
-            qf.StartOfCombat = async (swag) =>
+            qf.StartOfCombat = async (qfSwag) =>
             {
-                if ((qf.Owner.PrimaryItem != null) && qf.Owner.PrimaryItem.HasTrait(Trait.Drinkable))
+                if ((qfSwag.Owner.PrimaryItem != null) && qfSwag.Owner.PrimaryItem.HasTrait(Trait.Drinkable))
                 {
-                    Item potion = qf.Owner.PrimaryItem;
-                    CombatAction quaff = new CombatAction(qf.Owner, potion.Illustration, "Drink", [ Trait.Manipulate ], "Drink your " + potion.Name + ".\n\n" + potion.Description, Target.Self())
+                    Item potion = qfSwag.Owner.PrimaryItem;
+                    CombatAction quaff = new CombatAction(qfSwag.Owner, potion.Illustration, "Drink", [ Trait.Manipulate ], "Drink your " + potion.Name + ".\n\n" + potion.Description, Target.Self())
                         .WithEffectOnEachTarget(async (spell, caster, target, result) =>
                         {
                             await potion.WhenYouDrink(spell, caster);
                             Sfxs.Play(SfxName.DrinkPotion);
-                            qf.Owner.HeldItems.Remove(potion);
+                            qfSwag.Owner.HeldItems.Remove(potion);
                         });
-                    if (await qf.Owner.Battle.AskForConfirmation(qf.Owner, potion.Illustration, "Would you like to quickly drink your " + potion.Name + "?", "Drink")) 
+                    if (await qfSwag.Owner.Battle.AskForConfirmation(qfSwag.Owner, potion.Illustration, "Would you like to quickly drink your " + potion.Name + "?", "Drink")) 
                     {
-                        await qf.Owner.Battle.GameLoop.FullCast(quaff);
+                        await qfSwag.Owner.Battle.GameLoop.FullCast(quaff);
                     }
                 }
-                else if ((qf.Owner.SecondaryItem != null) && qf.Owner.SecondaryItem.HasTrait(Trait.Drinkable))
+                else if ((qfSwag.Owner.SecondaryItem != null) && qfSwag.Owner.SecondaryItem.HasTrait(Trait.Drinkable))
                 {
-                    Item potion = qf.Owner.SecondaryItem;
-                    CombatAction quaff = new CombatAction(qf.Owner, potion.Illustration, "Drink", [ Trait.Manipulate ], "Drink your " + potion.Name + ".\n\n" + potion.Description, Target.Self())
+                    Item potion = qfSwag.Owner.SecondaryItem;
+                    CombatAction quaff = new CombatAction(qfSwag.Owner, potion.Illustration, "Drink", [ Trait.Manipulate ], "Drink your " + potion.Name + ".\n\n" + potion.Description, Target.Self())
                         .WithEffectOnEachTarget(async (spell, caster, target, result) =>
                         {
                             await potion.WhenYouDrink(spell, caster);
                             Sfxs.Play(SfxName.DrinkPotion);
-                            qf.Owner.HeldItems.Remove(potion);
+                            qfSwag.Owner.HeldItems.Remove(potion);
                         });
-                    if (await qf.Owner.Battle.AskForConfirmation(qf.Owner, potion.Illustration, "Would you like to quickly drink your " + potion.Name + "?", "Drink"))
+                    if (await qfSwag.Owner.Battle.AskForConfirmation(qfSwag.Owner, potion.Illustration, "Would you like to quickly drink your " + potion.Name + "?", "Drink"))
                     {
-                        await qf.Owner.Battle.GameLoop.FullCast(quaff);
+                        await qfSwag.Owner.Battle.GameLoop.FullCast(quaff);
                     }
                 }
             };
         });
 
-    public static Feat TwinParry = new TrueFeat(ModManager.RegisterFeatName("Twin Parry", "Twin Parry"), 4, "You use your two weapons to parry attacks.", "You gain a +1 circumstance bonus to your AC until the start of your next turn, or a +2 circumstance bonus if either of the weapons you hold have the parry trait. You lose this circumstance bonus if you no longer meet this feat's requirements.", new Trait[] { Trait.Fighter, Trait.Ranger, SwashTrait })
+    public static Feat TwinParry = new TrueFeat(ModManager.RegisterFeatName("Twin Parry", "Twin Parry"), 4, 
+            "You use your two weapons to parry attacks.", "You gain a +1 circumstance bonus to your AC until the start of your next turn, or a +2 circumstance bonus if either of the weapons you hold have the parry trait. You lose this circumstance bonus if you no longer meet this feat's requirements.", [ Trait.Fighter, Trait.Ranger, SwashTrait ])
         .WithActionCost(1)
-        .WithPermanentQEffect(null, delegate (QEffect qf)
+        .WithPermanentQEffect(null, qf =>
         {
             qf.ProvideMainAction = qftechnical =>
             {
                 if ((qf.Owner.HeldItems.Count((i) => i.HasTrait(Trait.Weapon) && i.HasTrait(Trait.Melee)) == 2) && !qf.Owner.QEffects.Any((fct) => fct.Key == "TwinParry"))
                 {
-                    return new ActionPossibility(new CombatAction(qf.Owner, IllustrationName.Swords, "Twin Parry", [], "You use your weapons to block oncoming attacks and gain a +1 bonus to AC (+2 if one of your weapons has the parry trait).",
+                    return new ActionPossibility(new CombatAction(qf.Owner, IllustrationName.Swords, "Twin Parry", [Trait.Basic], "You use your weapons to block oncoming attacks and gain a +1 bonus to AC (+2 if one of your weapons has the parry trait).",
                             Target.Self().WithAdditionalRestriction((Creature you) => you.QEffects.Any((QEffect fct) => fct.Key == "TwinParry") ? "already parrying" : null))
                         .WithActionCost(1)
                         .WithGoodness((tg, you, _) => you.AI.GainBonusToAC(you.HeldItems.Any((Item it) => it.HasTrait(AddWeapons.Parry)) ? 2 : 1))
@@ -1481,7 +1455,7 @@ public class AddSwash
                             QEffect parrybonus = new QEffect("Twin Parry", "You have a +" + (caster.HeldItems.Any((Item it) => it.HasTrait(AddWeapons.Parry)) ? "2" : "1") + " circumstance bonus to AC.", ExpirationCondition.ExpiresAtStartOfYourTurn, caster, IllustrationName.Swords)
                             {
                                 Key = "TwinParry",
-                                BonusToDefenses = delegate (QEffect thing, CombatAction? bonk, Defense defense)
+                                BonusToDefenses = (thing, bonk, defense) =>
                                 {
                                     if (defense == Defense.AC)
                                     {
@@ -1516,7 +1490,8 @@ public class AddSwash
             trueFeat.WithAllowsForAdditionalClassTrait(SwashTrait);
         }
 
-    public static Feat AgileManeuvers = new TrueFeat(ModManager.RegisterFeatName("AgileManeuvers", "Agile Maneuvers"), 6, "You easily maneuver against your foes.", "Your Grapple, Trip, and Shove actions have a lower multiple attack penalty: -4 instead of -5 if they're the second attack on your turn, or -8 instead of -10 if they're the third or subsequent attack on your turn.", new Trait[] { SwashTrait })
+    public static Feat AgileManeuvers = new TrueFeat(ModManager.RegisterFeatName("AgileManeuvers", "Agile Maneuvers"), 6, 
+            "You easily maneuver against your foes.", "Your Grapple, Trip, and Shove actions have a lower multiple attack penalty: -4 instead of -5 if they're the second attack on your turn, or -8 instead of -10 if they're the third or subsequent attack on your turn.", [ SwashTrait ])
         .WithPrerequisite(sheet => sheet.HasFeat(FeatName.ExpertAthletics), "You must be an expert in Athletics.")
         .WithPermanentQEffect(null, (qf) =>
         {
@@ -1532,7 +1507,8 @@ public class AddSwash
             };
         });
 
-    public static Feat CombinationFinisher = new TrueFeat(ModManager.RegisterFeatName("CombinationFinisher", "Combination Finisher"), 6, "You combine a series of attacks with a powerful blow.", "Your finishers' Strikes have a lower multiple attack penalty: -4 (or -3 with an agile weapon) instead of -5 if they're the second attack on your turn, or -8 (or -6 with an agile weapon) instead of -10 if they're the third or subsequent attack on your turn.", [ SwashTrait ])
+    public static Feat CombinationFinisher = new TrueFeat(ModManager.RegisterFeatName("CombinationFinisher", "Combination Finisher"), 6, 
+            "You combine a series of attacks with a powerful blow.", "Your finishers' Strikes have a lower multiple attack penalty: -4 (or -3 with an agile weapon) instead of -5 if they're the second attack on your turn, or -8 (or -6 with an agile weapon) instead of -10 if they're the third or subsequent attack on your turn.", [ SwashTrait ])
         .WithPermanentQEffect(null, (qf) =>
         {
             qf.BonusToAttackRolls = (effect, action, target) => 
@@ -1552,10 +1528,7 @@ public class AddSwash
     public static Feat PreciseFinisher = new TrueFeat(ModManager.RegisterFeatName("PreciseFinisher", "Precise Finisher"), 6, 
             "Even when your foe avoids your Confident Finisher, you can still hit a vital spot.", "On a failure with Confident Finisher, you apply your full Precise Strike damage instead of half.", [ SwashTrait ])
         .WithPrerequisite((sheet) => sheet.HasFeat(Confident), "You must have Confident Finisher.")
-        .WithPermanentQEffectAndSameRulesText(qf =>
-        { 
-            qf.Id = PreciseFinisherQEffectId;
-        });
+        .WithPermanentQEffectAndSameRulesText(qf => { qf.Id = PreciseFinisherQEffectId; });
 
         public static Feat BleedingFinisher = new TrueFeat(ModManager.RegisterFeatName("BleedingFinisher", "Bleeding Finisher"), 8, 
                 "Your blow inflicts profuse bleeding.", "Make a piercing or slashing Strike with a weapon or unarmed attack that allows you to add your Precise Strike damage. If you hit, the target takes persistent bleed damage equal to your Precise Strike finisher damage.", [ SwashTrait, Finisher ])
@@ -1577,7 +1550,7 @@ public class AddSwash
         });
 
     public static Feat DualFinisher = new TrueFeat(ModManager.RegisterFeatName("DualFinisher", "Dual Finisher"), 8, 
-            "You split your attacks.", "Make two melee Strikes, one with each required weapon, each against a different foe. If the second Strike is made with a non-agile weapon, it takes a -2 penalty. Increase your multiple attack penalty only after attempting both Strikes.", [ SwashTrait, Finisher ])
+            "You split your attacks.", "Make two melee Strikes, each with a different weapon against a different foe. If the second Strike is made with a non-agile weapon, it takes a -2 penalty. Increase your multiple attack penalty only after attempting both Strikes.", [ SwashTrait, Finisher ])
         .WithActionCost(1)
         .WithPermanentQEffect(qf =>
         {
@@ -1698,16 +1671,16 @@ public class AddSwash
         .WithActionCost(1)
         .WithPermanentQEffect((qf) =>
         {
-            qf.AfterYouAcquireEffect = async (qf, qf2) =>
+            qf.AfterYouAcquireEffect = async (qfThis, qfGet) =>
             {
-                if (qf2.Id == PanacheId)
+                if (qfGet.Id == PanacheId)
                 {
-                    qf.Owner.AddQEffect(new QEffect()
+                    qfThis.Owner.AddQEffect(new QEffect()
                     {
                         ProvideMainAction = delegate
                         {
-                            int hpgained = qf.Owner.Level + qf.Owner.Abilities.Charisma;
-                            return new ActionPossibility(new CombatAction(qf.Owner, IllustrationName.WinningStreak, "Vivacious Bravado", [], "You gain " + hpgained + " temporary Hit Points.", Target.Self())
+                            int hpgained = qfThis.Owner.Level + qfThis.Owner.Abilities.Charisma;
+                            return new ActionPossibility(new CombatAction(qfThis.Owner, IllustrationName.WinningStreak, "Vivacious Bravado", [], "You gain " + hpgained + " temporary Hit Points.", Target.Self())
                                 .WithActionCost(1)
                                 .WithEffectOnEachTarget(async (spell, caster, target, result) =>
                                 {
@@ -1720,6 +1693,12 @@ public class AddSwash
                 }
             };
         });
+    
+    public static void ReplaceDazzlingDisplay()
+    {
+        TrueFeat trueFeat = AllFeats.GetFeatByFeatName(FeatName.DazzlingDisplay) as TrueFeat;
+        trueFeat.WithAllowsForAdditionalClassTrait(SwashTrait);
+    }
         
     public class SwashbucklerStyle : Feat
     {
@@ -1783,5 +1762,6 @@ public class AddSwash
         ReplaceNimbleRoll();
         ModManager.AddFeat(StunningFinisher);
         ModManager.AddFeat(VivaciousBravado);
+        ReplaceDazzlingDisplay();
     }
 }
