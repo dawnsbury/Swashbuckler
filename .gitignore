@@ -420,3 +420,6 @@ FodyWeavers.xsd
 # test
 obj/
 .idea/
+
+# trying this out
+/Folder.DotSettings.user
